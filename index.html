@@ -594,6 +594,13 @@
                         <tbody id="adminPrizeList"></tbody>
                     </table>
 
+                    <div style="margin-top: 30px; padding: 20px; background: #e8f4f8; border-radius: 15px;">
+                        <h3 style="margin-bottom: 15px;">📊 数据导出（Excel格式）</h3>
+                        <button type="button" id="exportRecordsBtn" class="btn btn-success">📋 导出抽奖记录</button>
+                        <button type="button" id="exportPrizesBtn" class="btn btn-success" style="margin-left: 10px;">🎁 导出奖品配置</button>
+                        <button type="button" id="exportAllBtn" class="btn btn-primary" style="margin-left: 10px;">📦 导出全部数据</button>
+                    </div>
+
                     <div style="margin-top: 30px; padding: 20px; background: #f8f9fa; border-radius: 15px;">
                         <h3 style="margin-bottom: 15px;">⚠️ 危险操作</h3>
                         <button type="button" id="clearRecordsBtn" class="btn btn-danger">🗑️ 清空所有记录</button>
@@ -1073,6 +1080,30 @@
                     };
                 }
                 
+                // 绑定数据导出按钮事件
+                const exportRecordsBtn = document.getElementById('exportRecordsBtn');
+                const exportPrizesBtn = document.getElementById('exportPrizesBtn');
+                const exportAllBtn = document.getElementById('exportAllBtn');
+                
+                if (exportRecordsBtn) {
+                    exportRecordsBtn.onclick = function() {
+                        console.log('Export records button clicked');
+                        exportRecords();
+                    };
+                }
+                if (exportPrizesBtn) {
+                    exportPrizesBtn.onclick = function() {
+                        console.log('Export prizes button clicked');
+                        exportPrizes();
+                    };
+                }
+                if (exportAllBtn) {
+                    exportAllBtn.onclick = function() {
+                        console.log('Export all button clicked');
+                        exportAllData();
+                    };
+                }
+                
                 alert('登录成功！');
             } else {
                 alert('密码错误！');
@@ -1263,6 +1294,132 @@
                 console.error('Error resetting data:', e);
                 alert('重置失败：' + e.message);
             }
+        }
+
+        // ==================== 数据导出功能 ====================
+        
+        // 导出抽奖记录为CSV
+        function exportRecords() {
+            const records = getRecords();
+            if (records.length === 0) {
+                alert('暂无抽奖记录可导出！');
+                return;
+            }
+            
+            // CSV 表头
+            const headers = ['序号', '手机号', '奖品名称', '奖品类型', '抽奖时间', '周次'];
+            
+            // CSV 数据行
+            const rows = records.map((record, index) => [
+                index + 1,
+                record.phone,
+                record.prize.name,
+                record.prize.type === 'real' ? '实物奖品' : '谢谢参与',
+                record.time,
+                record.weekKey
+            ]);
+            
+            // 生成CSV内容
+            const csvContent = [headers, ...rows]
+                .map(row => row.map(cell => `"${cell}"`).join(','))
+                .join('\n');
+            
+            // 添加BOM以支持中文
+            const BOM = '\uFEFF';
+            const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
+            
+            // 下载文件
+            const timestamp = new Date().toLocaleString('zh-CN').replace(/[/:]/g, '-');
+            downloadFile(blob, `抽奖记录_${timestamp}.csv`);
+            
+            alert(`成功导出 ${records.length} 条抽奖记录！`);
+        }
+        
+        // 导出奖品配置为CSV（Excel格式）
+        function exportPrizes() {
+            if (currentPrizes.length === 0) {
+                alert('暂无奖品配置可导出！');
+                return;
+            }
+            
+            // CSV 表头
+            const headers = ['序号', '奖品ID', '奖品名称', '奖品类型', '数量', '颜色'];
+            
+            // CSV 数据行
+            const rows = currentPrizes.map((prize, index) => [
+                index + 1,
+                prize.id,
+                prize.name,
+                prize.type === 'real' ? '实物奖品' : '谢谢参与',
+                prize.type === 'thanks' ? '∞' : prize.count,
+                prize.color
+            ]);
+            
+            // 生成CSV内容
+            const csvContent = [headers, ...rows]
+                .map(row => row.map(cell => `"${cell}"`).join(','))
+                .join('\n');
+            
+            // 添加BOM以支持中文
+            const BOM = '\uFEFF';
+            const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
+            
+            // 下载文件
+            const timestamp = new Date().toLocaleString('zh-CN').replace(/[/:]/g, '-');
+            downloadFile(blob, `奖品配置_${timestamp}.csv`);
+            
+            alert(`成功导出 ${currentPrizes.length} 个奖品配置！`);
+        }
+        
+        // 导出全部数据为CSV（包含多个工作表信息）
+        function exportAllData() {
+            const records = getRecords();
+            const timestamp = new Date().toLocaleString('zh-CN').replace(/[/:]/g, '-');
+            
+            // 构建完整的CSV内容，包含多个部分
+            let csvContent = '';
+            
+            // 第一部分：概览信息
+            csvContent += '抽奖数据导出概览\n';
+            csvContent += `导出时间,${new Date().toLocaleString('zh-CN')}\n`;
+            csvContent += `奖品数量,${currentPrizes.length}\n`;
+            csvContent += `抽奖记录数,${records.length}\n`;
+            csvContent += '\n\n';
+            
+            // 第二部分：奖品配置
+            csvContent += '奖品配置\n';
+            csvContent += '序号,奖品ID,奖品名称,奖品类型,数量,颜色\n';
+            currentPrizes.forEach((prize, index) => {
+                csvContent += `${index + 1},${prize.id},"${prize.name}",${prize.type === 'real' ? '实物奖品' : '谢谢参与'},${prize.type === 'thanks' ? '∞' : prize.count},${prize.color}\n`;
+            });
+            csvContent += '\n\n';
+            
+            // 第三部分：抽奖记录
+            csvContent += '抽奖记录\n';
+            csvContent += '序号,手机号,奖品名称,奖品类型,抽奖时间,周次\n';
+            records.forEach((record, index) => {
+                csvContent += `${index + 1},${record.phone},"${record.prize.name}",${record.prize.type === 'real' ? '实物奖品' : '谢谢参与'},${record.time},${record.weekKey}\n`;
+            });
+            
+            // 添加BOM以支持中文
+            const BOM = '\uFEFF';
+            const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
+            
+            downloadFile(blob, `抽奖工具完整数据_${timestamp}.csv`);
+            
+            alert(`成功导出完整数据！\n奖品数量：${currentPrizes.length}\n抽奖记录：${records.length} 条`);
+        }
+        
+        // 通用下载文件函数
+        function downloadFile(blob, filename) {
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+            link.href = url;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
         }
 
         // ==================== 启动 ====================
