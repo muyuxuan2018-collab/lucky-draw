@@ -1,0 +1,1272 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎁 幸运抽奖转转转</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Microsoft YaHei', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 14px;
+        }
+
+        .nav-tabs {
+            display: flex;
+            background: #f8f9fa;
+            border-bottom: 1px solid #dee2e6;
+        }
+
+        .nav-tab {
+            flex: 1;
+            padding: 15px;
+            text-align: center;
+            cursor: pointer;
+            border: none;
+            background: transparent;
+            font-size: 16px;
+            transition: all 0.3s;
+        }
+
+        .nav-tab:hover {
+            background: #e9ecef;
+        }
+
+        .nav-tab.active {
+            background: white;
+            color: #667eea;
+            font-weight: bold;
+            border-bottom: 3px solid #667eea;
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        /* 抽奖转盘样式 - 使用Canvas */
+        .wheel-container {
+            position: relative;
+            width: 350px;
+            height: 350px;
+            margin: 0 auto 30px;
+        }
+
+        #wheelCanvas {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            border: 8px solid #ffd700;
+            box-shadow: 0 0 30px rgba(255, 215, 0, 0.5);
+        }
+
+        .wheel-pointer {
+            position: absolute;
+            top: -20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 40px;
+            height: 50px;
+            background: linear-gradient(135deg, #ff6b6b, #ee5a24);
+            clip-path: polygon(50% 100%, 0 0, 100% 0);
+            z-index: 10;
+            filter: drop-shadow(0 5px 10px rgba(0,0,0,0.3));
+        }
+
+        .wheel-center {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(135deg, #ffd700, #ffed4e);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.3);
+            z-index: 5;
+            cursor: pointer;
+        }
+
+        .input-group {
+            margin-bottom: 20px;
+        }
+
+        .input-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .input-group input {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+
+        .input-group input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .btn {
+            padding: 15px 40px;
+            border: none;
+            border-radius: 50px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-transform: uppercase;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-primary:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #11998e, #38ef7d);
+            color: white;
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #eb3349, #f45c43);
+            color: white;
+        }
+
+        .prize-info {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 15px;
+            margin-bottom: 20px;
+        }
+
+        .prize-info h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+        }
+
+        .prize-list {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+        }
+
+        .prize-item {
+            background: white;
+            padding: 10px 15px;
+            border-radius: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        .prize-item.real {
+            border-left: 4px solid #27ae60;
+        }
+
+        .prize-item.thanks {
+            border-left: 4px solid #95a5a6;
+            opacity: 0.7;
+        }
+
+        /* 管理员面板样式 */
+        .admin-login {
+            text-align: center;
+            padding: 40px;
+        }
+
+        .admin-panel {
+            display: none;
+        }
+
+        .admin-panel.active {
+            display: block !important;
+        }
+
+        .prize-form {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 15px;
+            margin-bottom: 20px;
+        }
+
+        .form-row {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 15px;
+            align-items: center;
+        }
+
+        .form-row input {
+            flex: 1;
+            padding: 10px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+        }
+
+        .form-row input[type="number"] {
+            width: 100px;
+            flex: none;
+        }
+
+        .form-row select {
+            padding: 10px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+        }
+
+        .prize-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        .prize-table th,
+        .prize-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .prize-table th {
+            background: #f8f9fa;
+            font-weight: bold;
+        }
+
+        .prize-table tr:hover {
+            background: #f8f9fa;
+        }
+
+        .btn-small {
+            padding: 8px 15px;
+            font-size: 14px;
+            border-radius: 20px;
+        }
+
+        /* 中奖记录样式 */
+        .records-filter {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .records-filter input,
+        .records-filter select {
+            padding: 10px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+        }
+
+        .records-list {
+            max-height: 500px;
+            overflow-y: auto;
+        }
+
+        .record-item {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .record-item.winner {
+            background: linear-gradient(135deg, #d4edda, #c3e6cb);
+            border-left: 4px solid #28a745;
+        }
+
+        .record-item.thanks-record {
+            opacity: 0.6;
+        }
+
+        .record-info h4 {
+            color: #333;
+            margin-bottom: 5px;
+        }
+
+        .record-info p {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .record-prize {
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .record-item.winner .record-prize {
+            color: #28a745;
+        }
+
+        /* 弹窗样式 */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 40px;
+            border-radius: 20px;
+            text-align: center;
+            max-width: 400px;
+            animation: modalPop 0.3s ease;
+        }
+
+        @keyframes modalPop {
+            0% { transform: scale(0.5); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        .modal-icon {
+            font-size: 80px;
+            margin-bottom: 20px;
+        }
+
+        .modal-title {
+            font-size: 24px;
+            margin-bottom: 15px;
+        }
+
+        .modal-text {
+            color: #666;
+            margin-bottom: 25px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 15px;
+            text-align: center;
+        }
+
+        .stat-number {
+            font-size: 32px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .stat-label {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #999;
+        }
+
+        .empty-state-icon {
+            font-size: 60px;
+            margin-bottom: 20px;
+        }
+
+        @media (max-width: 600px) {
+            .wheel-container {
+                width: 280px;
+                height: 280px;
+            }
+
+            .prize-list {
+                grid-template-columns: 1fr;
+            }
+
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .form-row {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .form-row input[type="number"] {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎁 幸运抽奖转转转</h1>
+            <p>每周一次，好运连连！100人参与，随机抽取幸运儿</p>
+        </div>
+
+        <div class="nav-tabs">
+            <button class="nav-tab active" data-tab="lottery" onclick="switchTab('lottery')">🎲 参与抽奖</button>
+            <button class="nav-tab" data-tab="records" onclick="switchTab('records')">📋 中奖记录</button>
+            <button class="nav-tab" data-tab="admin" onclick="switchTab('admin')">🔐 管理员</button>
+        </div>
+
+        <div class="content">
+            <!-- 抽奖页面 -->
+            <div id="lottery" class="tab-content active">
+                <div class="wheel-container">
+                    <div class="wheel-pointer"></div>
+                    <canvas id="wheelCanvas" width="350" height="350"></canvas>
+                    <div class="wheel-center">🎁</div>
+                </div>
+
+                <div class="prize-info">
+                    <h3>🎁 本期奖品</h3>
+                    <div class="prize-list" id="prizeList"></div>
+                </div>
+
+                <div class="input-group">
+                    <label for="phone">📱 请输入手机号（用于领奖验证）</label>
+                    <input type="tel" id="phone" placeholder="请输入11位手机号" maxlength="11">
+                </div>
+
+                <div style="text-align: center;">
+                    <button class="btn btn-primary" id="drawBtn" onclick="startDraw()">
+                        🎲 立即抽奖
+                    </button>
+                </div>
+
+                <div style="margin-top: 20px; padding: 15px; background: #fff3cd; border-radius: 10px; font-size: 14px; color: #856404;">
+                    <strong>📌 活动规则：</strong><br>
+                    1. 每人每周仅限参与一次<br>
+                    2. 中奖后凭手机号领奖<br>
+                    3. 奖品数量有限，抽完即止
+                </div>
+            </div>
+
+            <!-- 中奖记录页面 -->
+            <div id="records" class="tab-content">
+                <h2 style="margin-bottom: 20px;">📋 抽奖记录</h2>
+                
+                <div class="records-filter">
+                    <input type="text" id="searchPhone" placeholder="搜索手机号">
+                    <select id="filterPrize">
+                        <option value="">全部奖品</option>
+                    </select>
+                    <button class="btn btn-primary btn-small" onclick="filterRecords()">🔍 搜索</button>
+                    <button class="btn btn-small" style="background: #6c757d; color: white;" onclick="resetFilter()">重置</button>
+                </div>
+
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-number" id="totalDraws">0</div>
+                        <div class="stat-label">总参与人次</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" id="totalWinners">0</div>
+                        <div class="stat-label">中奖人数</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" id="remainingPrizes">0</div>
+                        <div class="stat-label">剩余奖品</div>
+                    </div>
+                </div>
+
+                <div class="records-list" id="recordsList">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📭</div>
+                        <p>暂无抽奖记录</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 管理员页面 -->
+            <div id="admin" class="tab-content">
+                <div id="adminLogin" class="admin-login">
+                    <h2 style="margin-bottom: 20px;">🔐 管理员登录</h2>
+                    <div class="input-group" style="max-width: 300px; margin: 0 auto 20px;">
+                        <input type="password" id="adminPassword" placeholder="请输入管理员密码">
+                    </div>
+                    <button class="btn btn-primary" onclick="adminLogin()">登录</button>
+                </div>
+
+                <div id="adminPanel" class="admin-panel">
+                    <h2 style="margin-bottom: 20px;">⚙️ 奖品管理</h2>
+                    
+                    <div class="prize-form">
+                        <h3 style="margin-bottom: 15px;">添加/编辑奖品</h3>
+                        <div class="form-row">
+                            <input type="text" id="prizeName" placeholder="奖品名称">
+                            <input type="number" id="prizeCount" placeholder="数量" min="0">
+                            <select id="prizeType">
+                                <option value="real">实物奖品</option>
+                                <option value="thanks">谢谢参与</option>
+                            </select>
+                        </div>
+                        <button class="btn btn-success" onclick="savePrize()">💾 保存奖品</button>
+                        <button class="btn" style="background: #6c757d; color: white; margin-left: 10px;" onclick="resetPrizeForm()">清空</button>
+                    </div>
+
+                    <h3>奖品列表</h3>
+                    <table class="prize-table">
+                        <thead>
+                            <tr>
+                                <th>奖品名称</th>
+                                <th>类型</th>
+                                <th>剩余数量</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="adminPrizeList"></tbody>
+                    </table>
+
+                    <div style="margin-top: 30px; padding: 20px; background: #f8f9fa; border-radius: 15px;">
+                        <h3 style="margin-bottom: 15px;">⚠️ 危险操作</h3>
+                        <button type="button" id="clearRecordsBtn" class="btn btn-danger">🗑️ 清空所有记录</button>
+                        <button type="button" id="resetDataBtn" class="btn btn-danger" style="margin-left: 10px;">🔄 重置所有数据</button>
+                    </div>
+
+                    <div style="margin-top: 20px; text-align: right;">
+                        <button class="btn" style="background: #6c757d; color: white;" onclick="adminLogout()">退出登录</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 抽奖结果弹窗 -->
+    <div class="modal" id="resultModal">
+        <div class="modal-content">
+            <div class="modal-icon" id="resultIcon">🎉</div>
+            <h2 class="modal-title" id="resultTitle">恭喜你！</h2>
+            <p class="modal-text" id="resultText">你抽中了奖品！</p>
+            <button class="btn btn-primary" onclick="closeModal()">确定</button>
+        </div>
+    </div>
+
+    <script>
+        // ==================== 数据存储 ====================
+        const STORAGE_KEYS = {
+            PRIZES: 'lottery_prizes_v2',
+            RECORDS: 'lottery_records_v2',
+            PARTICIPANTS: 'lottery_participants_v2'
+        };
+
+        // 默认奖品配置 - 交错排列：每两个彩色之间夹1-2个灰色
+        const DEFAULT_PRIZES = [
+            { id: 1, name: 'AD钙奶', count: 5, type: 'real', color: '#3498db' },
+            { id: 2, name: '谢谢参与', count: 999999, type: 'thanks', color: '#95a5a6' },
+            { id: 3, name: '棉花糖', count: 10, type: 'real', color: '#e91e63' },
+            { id: 4, name: '谢谢参与', count: 999999, type: 'thanks', color: '#7f8c8d' },
+            { id: 5, name: '谢谢参与', count: 999999, type: 'thanks', color: '#95a5a6' },
+            { id: 6, name: '啤酒', count: 5, type: 'real', color: '#f39c12' },
+            { id: 7, name: '谢谢参与', count: 999999, type: 'thanks', color: '#7f8c8d' },
+            { id: 8, name: '牛奶', count: 5, type: 'real', color: '#ecf0f1' },
+            { id: 9, name: '谢谢参与', count: 999999, type: 'thanks', color: '#95a5a6' },
+            { id: 10, name: '谢谢参与', count: 999999, type: 'thanks', color: '#7f8c8d' }
+        ];
+
+        let currentPrizes = [];
+        let isSpinning = false;
+        let editingPrizeId = null;
+        let currentRotation = 0;
+        let isAdminLoggedIn = false;
+
+        // ==================== 初始化 ====================
+        function init() {
+            loadPrizes();
+            drawWheel();
+            renderPrizeList();
+            renderRecords();
+            updateStats();
+        }
+
+        // ==================== 数据操作 ====================
+        function loadPrizes() {
+            const saved = localStorage.getItem(STORAGE_KEYS.PRIZES);
+            if (saved) {
+                currentPrizes = JSON.parse(saved);
+            } else {
+                currentPrizes = JSON.parse(JSON.stringify(DEFAULT_PRIZES));
+                savePrizesToStorage();
+            }
+        }
+
+        function savePrizesToStorage() {
+            localStorage.setItem(STORAGE_KEYS.PRIZES, JSON.stringify(currentPrizes));
+        }
+
+        function getRecords() {
+            const saved = localStorage.getItem(STORAGE_KEYS.RECORDS);
+            return saved ? JSON.parse(saved) : [];
+        }
+
+        function saveRecord(record) {
+            const records = getRecords();
+            records.unshift(record);
+            localStorage.setItem(STORAGE_KEYS.RECORDS, JSON.stringify(records));
+        }
+
+        function getParticipants() {
+            const saved = localStorage.getItem(STORAGE_KEYS.PARTICIPANTS);
+            return saved ? JSON.parse(saved) : {};
+        }
+
+        function saveParticipant(phone, weekKey) {
+            const participants = getParticipants();
+            if (!participants[weekKey]) {
+                participants[weekKey] = [];
+            }
+            if (!participants[weekKey].includes(phone)) {
+                participants[weekKey].push(phone);
+            }
+            localStorage.setItem(STORAGE_KEYS.PARTICIPANTS, JSON.stringify(participants));
+        }
+
+        function hasParticipatedThisWeek(phone) {
+            const weekKey = getWeekKey();
+            const participants = getParticipants();
+            return participants[weekKey] && participants[weekKey].includes(phone);
+        }
+
+        function getWeekKey() {
+            const now = new Date();
+            const year = now.getFullYear();
+            const week = getWeekNumber(now);
+            return `${year}-W${week}`;
+        }
+
+        function getWeekNumber(date) {
+            const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+            const dayNum = d.getUTCDay() || 7;
+            d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+            const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+            return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+        }
+
+        // ==================== Canvas转盘绘制 ====================
+        function drawWheel() {
+            const canvas = document.getElementById('wheelCanvas');
+            const ctx = canvas.getContext('2d');
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const radius = Math.min(centerX, centerY) - 10;
+
+            // 清空画布
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            const availablePrizes = currentPrizes.filter(p => p.count > 0 || p.type === 'thanks');
+            const sectionCount = availablePrizes.length;
+            const anglePerSection = (2 * Math.PI) / sectionCount;
+
+            availablePrizes.forEach((prize, index) => {
+                const startAngle = index * anglePerSection - Math.PI / 2;
+                const endAngle = (index + 1) * anglePerSection - Math.PI / 2;
+
+                // 绘制扇形
+                ctx.beginPath();
+                ctx.moveTo(centerX, centerY);
+                ctx.arc(centerX, centerY, radius, startAngle, endAngle);
+                ctx.closePath();
+
+                // 设置颜色
+                if (prize.type === 'thanks') {
+                    // 谢谢参与使用交替的灰色
+                    ctx.fillStyle = (index % 2 === 0) ? '#95a5a6' : '#7f8c8d';
+                } else {
+                    ctx.fillStyle = prize.color || '#3498db';
+                }
+                ctx.fill();
+
+                // 绘制边框
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                // 绘制文字
+                ctx.save();
+                ctx.translate(centerX, centerY);
+                ctx.rotate(startAngle + anglePerSection / 2);
+                ctx.textAlign = 'right';
+                ctx.fillStyle = prize.name === '牛奶' ? '#333' : '#fff';
+                ctx.font = 'bold 13px Microsoft YaHei';
+                
+                // 文字位置调整
+                const textRadius = radius - 35;
+                ctx.fillText(prize.name, textRadius, 4);
+                ctx.restore();
+            });
+
+            // 绘制中心圆
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, 30, 0, 2 * Math.PI);
+            ctx.fillStyle = '#ffd700';
+            ctx.fill();
+            ctx.strokeStyle = '#ffed4e';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+        }
+
+        function renderPrizeList() {
+            const list = document.getElementById('prizeList');
+            list.innerHTML = '';
+            
+            const realPrizes = currentPrizes.filter(p => p.type === 'real' && p.count > 0);
+            
+            if (realPrizes.length === 0) {
+                list.innerHTML = '<p style="text-align: center; color: #999;">暂无奖品</p>';
+                return;
+            }
+            
+            realPrizes.forEach(prize => {
+                const item = document.createElement('div');
+                item.className = 'prize-item real';
+                item.innerHTML = `
+                    <span>${prize.name}</span>
+                    <span style="color: #e74c3c; font-weight: bold;">剩 ${prize.count} 份</span>
+                `;
+                list.appendChild(item);
+            });
+        }
+
+        // ==================== 抽奖逻辑 ====================
+        function startDraw() {
+            if (isSpinning) return;
+
+            const phone = document.getElementById('phone').value.trim();
+            
+            // 验证手机号
+            if (!/^1[3-9]\d{9}$/.test(phone)) {
+                showResult('❌', '手机号格式错误', '请输入正确的11位手机号');
+                return;
+            }
+
+            // 检查本周是否已参与
+            if (hasParticipatedThisWeek(phone)) {
+                showResult('⏰', '本周已参与', '每人每周仅限参与一次，下周再来吧！');
+                return;
+            }
+
+            // 检查是否有奖品
+            const availableRealPrizes = currentPrizes.filter(p => p.type === 'real' && p.count > 0);
+            if (availableRealPrizes.length === 0) {
+                showResult('😔', '奖品已抽完', '本期奖品已全部抽完，敬请期待下期活动！');
+                return;
+            }
+
+            isSpinning = true;
+            document.getElementById('drawBtn').disabled = true;
+
+            // 执行抽奖
+            const result = performDraw();
+            
+            // 旋转转盘
+            spinWheel(result.index, () => {
+                // 保存参与记录
+                saveParticipant(phone, getWeekKey());
+                
+                // 保存中奖记录
+                const record = {
+                    id: Date.now(),
+                    phone: phone,
+                    prize: result.prize,
+                    time: new Date().toLocaleString('zh-CN'),
+                    weekKey: getWeekKey()
+                };
+                saveRecord(record);
+
+                // 如果是实物奖品，减少库存
+                if (result.prize.type === 'real') {
+                    const prizeIndex = currentPrizes.findIndex(p => p.id === result.prize.id);
+                    if (prizeIndex !== -1) {
+                        currentPrizes[prizeIndex].count--;
+                        savePrizesToStorage();
+                    }
+                }
+
+                // 显示结果
+                setTimeout(() => {
+                    if (result.prize.type === 'thanks') {
+                        showResult('😊', '谢谢参与', '很遗憾，这次没有中奖，下周再来试试吧！');
+                    } else {
+                        showResult('🎉', '恭喜你中奖了！', `你抽中了：${result.prize.name}<br>请凭手机号 ${phone} 领奖`);
+                    }
+                    
+                    // 更新显示
+                    renderPrizeList();
+                    drawWheel();
+                    updateStats();
+                    
+                    isSpinning = false;
+                    document.getElementById('drawBtn').disabled = false;
+                }, 500);
+            });
+        }
+
+        function performDraw() {
+            const availablePrizes = currentPrizes.filter(p => p.count > 0 || p.type === 'thanks');
+            
+            // 构建加权数组（谢谢参与占更大权重）
+            let weightedPool = [];
+            availablePrizes.forEach((prize, index) => {
+                const weight = prize.type === 'thanks' ? 3 : 1;
+                for (let i = 0; i < weight; i++) {
+                    weightedPool.push({ prize, index });
+                }
+            });
+
+            // 随机选择
+            const randomIndex = Math.floor(Math.random() * weightedPool.length);
+            return weightedPool[randomIndex];
+        }
+
+        function spinWheel(targetIndex, callback) {
+            const canvas = document.getElementById('wheelCanvas');
+            const availablePrizes = currentPrizes.filter(p => p.count > 0 || p.type === 'thanks');
+            const sectionCount = availablePrizes.length;
+            const anglePerSection = 360 / sectionCount;
+            
+            // 计算目标角度（让指针指向选中扇形的中间）
+            const targetAngle = 360 - (targetIndex * anglePerSection + anglePerSection / 2);
+            
+            // 添加多圈旋转
+            const spins = 5 + Math.floor(Math.random() * 3);
+            const finalAngle = currentRotation + spins * 360 + (targetAngle - (currentRotation % 360));
+            
+            currentRotation = finalAngle;
+            
+            // 使用CSS动画
+            canvas.style.transition = 'transform 4s cubic-bezier(0.23, 1, 0.32, 1)';
+            canvas.style.transform = `rotate(${finalAngle}deg)`;
+            
+            setTimeout(callback, 4000);
+        }
+
+        // ==================== 弹窗 ====================
+        function showResult(icon, title, text) {
+            document.getElementById('resultIcon').textContent = icon;
+            document.getElementById('resultTitle').textContent = title;
+            document.getElementById('resultText').innerHTML = text;
+            document.getElementById('resultModal').classList.add('active');
+        }
+
+        function closeModal() {
+            document.getElementById('resultModal').classList.remove('active');
+        }
+
+        // ==================== 标签切换 ====================
+        function switchTab(tabName) {
+            // 更新标签按钮状态
+            document.querySelectorAll('.nav-tab').forEach(tab => {
+                tab.classList.remove('active');
+                if (tab.dataset.tab === tabName) {
+                    tab.classList.add('active');
+                }
+            });
+
+            // 更新内容显示
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            document.getElementById(tabName).classList.add('active');
+
+            if (tabName === 'records') {
+                renderRecords();
+                updateStats();
+            } else if (tabName === 'admin') {
+                if (isAdminLoggedIn) {
+                    renderAdminPrizeList();
+                }
+            }
+        }
+
+        // ==================== 记录页面 ====================
+        function renderRecords() {
+            const records = getRecords();
+            const list = document.getElementById('recordsList');
+            
+            if (records.length === 0) {
+                list.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📭</div>
+                        <p>暂无抽奖记录</p>
+                    </div>
+                `;
+                return;
+            }
+
+            // 更新筛选器选项
+            const filterSelect = document.getElementById('filterPrize');
+            const uniquePrizes = [...new Set(records.map(r => r.prize.name))];
+            filterSelect.innerHTML = '<option value="">全部奖品</option>' + 
+                uniquePrizes.map(p => `<option value="${p}">${p}</option>`).join('');
+
+            list.innerHTML = records.map(record => `
+                <div class="record-item ${record.prize.type === 'real' ? 'winner' : 'thanks-record'}">
+                    <div class="record-info">
+                        <h4>${maskPhone(record.phone)}</h4>
+                        <p>${record.time}</p>
+                    </div>
+                    <div class="record-prize">${record.prize.name}</div>
+                </div>
+            `).join('');
+        }
+
+        function maskPhone(phone) {
+            return phone.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2');
+        }
+
+        function filterRecords() {
+            const phoneFilter = document.getElementById('searchPhone').value.trim();
+            const prizeFilter = document.getElementById('filterPrize').value;
+            
+            let records = getRecords();
+            
+            if (phoneFilter) {
+                records = records.filter(r => r.phone.includes(phoneFilter));
+            }
+            
+            if (prizeFilter) {
+                records = records.filter(r => r.prize.name === prizeFilter);
+            }
+            
+            const list = document.getElementById('recordsList');
+            if (records.length === 0) {
+                list.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">🔍</div>
+                        <p>没有找到匹配的记录</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            list.innerHTML = records.map(record => `
+                <div class="record-item ${record.prize.type === 'real' ? 'winner' : 'thanks-record'}">
+                    <div class="record-info">
+                        <h4>${maskPhone(record.phone)}</h4>
+                        <p>${record.time}</p>
+                    </div>
+                    <div class="record-prize">${record.prize.name}</div>
+                </div>
+            `).join('');
+        }
+
+        function resetFilter() {
+            document.getElementById('searchPhone').value = '';
+            document.getElementById('filterPrize').value = '';
+            renderRecords();
+        }
+
+        function updateStats() {
+            const records = getRecords();
+            const realPrizes = currentPrizes.filter(p => p.type === 'real');
+            const remainingPrizes = realPrizes.reduce((sum, p) => sum + p.count, 0);
+            const winners = records.filter(r => r.prize.type === 'real').length;
+            
+            document.getElementById('totalDraws').textContent = records.length;
+            document.getElementById('totalWinners').textContent = winners;
+            document.getElementById('remainingPrizes').textContent = remainingPrizes;
+        }
+
+        // ==================== 管理员功能 ====================
+        const ADMIN_PASSWORD = '3632';
+
+        function adminLogin() {
+            const password = document.getElementById('adminPassword').value;
+            if (password === ADMIN_PASSWORD) {
+                isAdminLoggedIn = true;
+                document.getElementById('adminLogin').style.display = 'none';
+                const panel = document.getElementById('adminPanel');
+                panel.style.display = 'block';
+                panel.classList.add('active');
+                renderAdminPrizeList();
+                
+                // 绑定危险操作按钮事件
+                const clearBtn = document.getElementById('clearRecordsBtn');
+                const resetBtn = document.getElementById('resetDataBtn');
+                
+                if (clearBtn) {
+                    clearBtn.onclick = function() {
+                        console.log('Clear records button clicked');
+                        clearAllRecords();
+                    };
+                }
+                if (resetBtn) {
+                    resetBtn.onclick = function() {
+                        console.log('Reset data button clicked');
+                        resetAllData();
+                    };
+                }
+                
+                alert('登录成功！');
+            } else {
+                alert('密码错误！');
+            }
+        }
+
+        function adminLogout() {
+            isAdminLoggedIn = false;
+            document.getElementById('adminLogin').style.display = 'block';
+            const panel = document.getElementById('adminPanel');
+            panel.style.display = 'none';
+            panel.classList.remove('active');
+            document.getElementById('adminPassword').value = '';
+        }
+
+        function renderAdminPrizeList() {
+            const tbody = document.getElementById('adminPrizeList');
+            if (!tbody) {
+                console.error('adminPrizeList element not found');
+                return;
+            }
+            
+            console.log('Rendering admin prize list, count:', currentPrizes.length);
+            
+            if (currentPrizes.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #999;">暂无奖品</td></tr>';
+                return;
+            }
+            
+            tbody.innerHTML = currentPrizes.map(prize => {
+                const typeLabel = prize.type === 'real' ? '🎁 实物' : '😊 谢谢参与';
+                const countLabel = prize.type === 'thanks' ? '∞' : prize.count;
+                return `
+                <tr data-prize-id="${prize.id}">
+                    <td>${prize.name}</td>
+                    <td>${typeLabel}</td>
+                    <td>${countLabel}</td>
+                    <td>
+                        <button type="button" class="btn btn-primary btn-small" data-action="edit" data-id="${prize.id}">编辑</button>
+                        <button type="button" class="btn btn-danger btn-small" data-action="delete" data-id="${prize.id}">删除</button>
+                    </td>
+                </tr>
+            `}).join('');
+            
+            // 使用事件委托绑定按钮点击事件
+            tbody.querySelectorAll('button[data-action="edit"]').forEach(btn => {
+                btn.onclick = function() {
+                    const id = parseInt(this.getAttribute('data-id'));
+                    editPrize(id);
+                };
+            });
+            
+            tbody.querySelectorAll('button[data-action="delete"]').forEach(btn => {
+                btn.onclick = function() {
+                    const id = parseInt(this.getAttribute('data-id'));
+                    deletePrize(id);
+                };
+            });
+        }
+
+        function savePrize() {
+            const name = document.getElementById('prizeName').value.trim();
+            const count = parseInt(document.getElementById('prizeCount').value) || 0;
+            const type = document.getElementById('prizeType').value;
+
+            if (!name) {
+                alert('请输入奖品名称！');
+                return;
+            }
+
+            if (editingPrizeId) {
+                // 编辑模式
+                const index = currentPrizes.findIndex(p => p.id === editingPrizeId);
+                if (index !== -1) {
+                    currentPrizes[index] = {
+                        ...currentPrizes[index],
+                        name,
+                        count: type === 'thanks' ? 999999 : count,
+                        type,
+                        color: type === 'thanks' ? '#95a5a6' : (currentPrizes[index].color || '#3498db')
+                    };
+                }
+            } else {
+                // 添加新模式
+                const newId = Math.max(...currentPrizes.map(p => p.id), 0) + 1;
+                currentPrizes.push({
+                    id: newId,
+                    name,
+                    count: type === 'thanks' ? 999999 : count,
+                    type,
+                    color: type === 'thanks' ? '#95a5a6' : '#3498db'
+                });
+            }
+
+            savePrizesToStorage();
+            renderAdminPrizeList();
+            renderPrizeList();
+            drawWheel();
+            resetPrizeForm();
+            alert('保存成功！');
+        }
+
+        function editPrize(id) {
+            const prize = currentPrizes.find(p => p.id === id);
+            if (!prize) return;
+
+            document.getElementById('prizeName').value = prize.name;
+            document.getElementById('prizeCount').value = prize.type === 'thanks' ? '' : prize.count;
+            document.getElementById('prizeType').value = prize.type;
+            editingPrizeId = id;
+        }
+
+        // 删除奖品
+        function deletePrize(id) {
+            console.log('deletePrize called with id:', id);
+            if (!confirm('确定要删除这个奖品吗？')) {
+                console.log('Delete cancelled by user');
+                return;
+            }
+            
+            const originalLength = currentPrizes.length;
+            currentPrizes = currentPrizes.filter(p => p.id !== id);
+            
+            console.log('Before:', originalLength, 'After:', currentPrizes.length);
+            
+            if (currentPrizes.length < originalLength) {
+                savePrizesToStorage();
+                renderAdminPrizeList();
+                renderPrizeList();
+                drawWheel();
+                alert('删除成功！');
+            } else {
+                alert('删除失败：未找到该奖品');
+            }
+        }
+
+        function resetPrizeForm() {
+            document.getElementById('prizeName').value = '';
+            document.getElementById('prizeCount').value = '';
+            document.getElementById('prizeType').value = 'real';
+            editingPrizeId = null;
+        }
+
+        // 清空所有记录
+        function clearAllRecords() {
+            console.log('clearAllRecords called');
+            if (!confirm('⚠️ 确定要清空所有抽奖记录吗？此操作不可恢复！')) {
+                console.log('Clear records cancelled by user');
+                return;
+            }
+            
+            try {
+                localStorage.removeItem(STORAGE_KEYS.RECORDS);
+                localStorage.removeItem(STORAGE_KEYS.PARTICIPANTS);
+                console.log('Records cleared from localStorage');
+                alert('记录已清空！');
+                updateStats();
+            } catch (e) {
+                console.error('Error clearing records:', e);
+                alert('清空失败：' + e.message);
+            }
+        }
+
+        // 重置所有数据
+        function resetAllData() {
+            console.log('resetAllData called');
+            if (!confirm('⚠️ 确定要重置所有数据吗？这将恢复默认奖品配置并清空所有记录！')) {
+                console.log('Reset all data cancelled by user');
+                return;
+            }
+            
+            try {
+                localStorage.removeItem(STORAGE_KEYS.PRIZES);
+                localStorage.removeItem(STORAGE_KEYS.RECORDS);
+                localStorage.removeItem(STORAGE_KEYS.PARTICIPANTS);
+                console.log('All data cleared from localStorage');
+                
+                currentPrizes = JSON.parse(JSON.stringify(DEFAULT_PRIZES));
+                savePrizesToStorage();
+                console.log('Default prizes restored');
+                
+                renderAdminPrizeList();
+                renderPrizeList();
+                drawWheel();
+                updateStats();
+                alert('数据已重置！');
+            } catch (e) {
+                console.error('Error resetting data:', e);
+                alert('重置失败：' + e.message);
+            }
+        }
+
+        // ==================== 启动 ====================
+        init();
+    </script>
+</body>
+</html>
