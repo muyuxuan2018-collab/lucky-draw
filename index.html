@@ -818,7 +818,7 @@
                     `https://api.github.com/repos/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/contents/${GITHUB_CONFIG.dataFile}`,
                     {
                         headers: {
-                            'Authorization': `token ${pat}`,
+                            'Authorization': `Bearer ${pat}`,
                             'Accept': 'application/vnd.github.v3+json'
                         }
                     }
@@ -842,7 +842,7 @@
                     {
                         method: 'PUT',
                         headers: {
-                            'Authorization': `token ${pat}`,
+                            'Authorization': `Bearer ${pat}`,
                             'Accept': 'application/vnd.github.v3+json',
                             'Content-Type': 'application/json'
                         },
