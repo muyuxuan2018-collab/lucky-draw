@@ -1,6 +1,5 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
-    // 强制重新部署
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -773,33 +772,23 @@
             console.log('开始加载奖品数据...');
             
             try {
-                // 尝试从 GitHub 读取数据（添加时间戳防止缓存）
-                const timestamp = Date.now();
-                const response = await fetch(GITHUB_RAW_URL + '?t=' + timestamp, {
-                    method: 'GET',
-                    headers: {
-                        'Cache-Control': 'no-cache, no-store, must-revalidate',
-                        'Pragma': 'no-cache'
-                    }
-                });
-                
+                // 尝试从 GitHub 读取数据
+                const response = await fetch(GITHUB_RAW_URL + '?t=' + Date.now());
                 if (response.ok) {
                     const data = await response.json();
                     if (data.prizes && Array.isArray(data.prizes)) {
                         currentPrizes = data.prizes;
-                        // 同时更新本地存储
-                        localStorage.setItem(STORAGE_KEYS.PRIZES, JSON.stringify(currentPrizes));
                         console.log('从 GitHub 加载奖品成功:', currentPrizes);
                         showSyncStatus('数据已同步', 'success');
                         return;
                     }
                 }
-                throw new Error('GitHub 响应异常');
             } catch (e) {
                 console.log('从 GitHub 读取失败，使用本地数据:', e);
-                // 降级到本地存储
-                loadPrizesFromLocal();
             }
+            
+            // 降级到本地存储
+            loadPrizesFromLocal();
         }
 
         function loadPrizesFromLocal() {
