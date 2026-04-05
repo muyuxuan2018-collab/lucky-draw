@@ -1,0 +1,15 @@
+{
+  "prizes": [
+    { "id": 1, "name": "AD钙奶", "count": 5, "type": "real", "color": "#3498db" },
+    { "id": 2, "name": "谢谢参与", "count": 999999, "type": "thanks", "color": "#95a5a6" },
+    { "id": 3, "name": "棉花糖", "count": 10, "type": "real", "color": "#e91e63" },
+    { "id": 4, "name": "谢谢参与", "count": 999999, "type": "thanks", "color": "#7f8c8d" },
+    { "id": 5, "name": "谢谢参与", "count": 999999, "type": "thanks", "color": "#95a5a6" },
+    { "id": 6, "name": "啤酒", "count": 5, "type": "real", "color": "#f39c12" },
+    { "id": 7, "name": "谢谢参与", "count": 999999, "type": "thanks", "color": "#7f8c8d" },
+    { "id": 8, "name": "牛奶", "count": 5, "type": "real", "color": "#ecf0f1" },
+    { "id": 9, "name": "谢谢参与", "count": 999999, "type": "thanks", "color": "#95a5a6" },
+    { "id": 10, "name": "谢谢参与", "count": 999999, "type": "thanks", "color": "#7f8c8d" }
+  ],
+  "updateTime": "2026-04-05T17:00:00.000Z"
+}
