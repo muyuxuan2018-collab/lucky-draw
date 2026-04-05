@@ -693,25 +693,39 @@
         // ==================== 云开发初始化 ====================
         async function initCloud() {
             try {
-                // 使用匿名登录方式
+                // 初始化云开发
                 cloudApp = new cloud.Cloud({
                     resourceAppid: CLOUD_CONFIG.resourceAppid,
                     resourceEnv: CLOUD_CONFIG.resourceEnv
                 });
                 
                 await cloudApp.init();
+                console.log('云开发初始化完成');
                 
-                // 匿名登录
-                await cloudApp.auth().anonymousAuthProvider().signIn();
-                console.log('匿名登录成功');
+                // 获取 auth 对象并匿名登录
+                const auth = cloudApp.auth();
+                console.log('获取 auth 对象');
+                
+                // 先检查登录状态
+                const loginState = await auth.getLoginState();
+                console.log('当前登录状态:', loginState);
+                
+                if (!loginState) {
+                    // 未登录，执行匿名登录
+                    await auth.signInAnonymously();
+                    console.log('匿名登录成功');
+                } else {
+                    console.log('已有登录状态');
+                }
                 
                 db = cloudApp.database();
                 isCloudReady = true;
-                console.log('云开发初始化成功');
+                console.log('云开发准备就绪');
             } catch (e) {
                 console.error('云开发初始化失败:', e);
+                console.error('错误详情:', e.message, e.code);
                 isCloudReady = false;
-                alert('云开发连接失败，将使用本地存储模式');
+                alert('云开发连接失败，将使用本地存储模式。错误：' + e.message);
             }
         }
         
