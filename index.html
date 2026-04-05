@@ -697,6 +697,9 @@
         
         // Raw 文件链接（用于读取数据）
         const GITHUB_RAW_URL = `https://raw.githubusercontent.com/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/main/${GITHUB_CONFIG.dataFile}`;
+        
+        // GitHub API 链接（用于实时读写）
+        const GITHUB_API_URL = `https://api.github.com/repos/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/contents/${GITHUB_CONFIG.dataFile}`;
 
         // ==================== 数据存储 ====================
         const STORAGE_KEYS = {
@@ -768,19 +771,33 @@
         }
 
         // ==================== 数据操作 ====================
+        let globalData = { prizes: [], records: [], participants: {} };
+        
         async function loadPrizes() {
-            console.log('开始加载奖品数据...');
-            
+            console.log('开始加载数据...');
+            await loadDataFromGitHub();
+        }
+        
+        // 从 GitHub 加载完整数据（奖品+记录+参与情况）
+        async function loadDataFromGitHub() {
             try {
-                // 尝试从 GitHub 读取数据
                 const response = await fetch(GITHUB_RAW_URL + '?t=' + Date.now());
                 if (response.ok) {
                     const data = await response.json();
                     if (data.prizes && Array.isArray(data.prizes)) {
-                        currentPrizes = data.prizes;
-                        console.log('从 GitHub 加载奖品成功:', currentPrizes);
+                        globalData.prizes = data.prizes;
+                        globalData.records = data.records || [];
+                        globalData.participants = data.participants || {};
+                        currentPrizes = globalData.prizes;
+                        
+                        // 同步到本地
+                        localStorage.setItem(STORAGE_KEYS.PRIZES, JSON.stringify(currentPrizes));
+                        localStorage.setItem(STORAGE_KEYS.RECORDS, JSON.stringify(globalData.records));
+                        localStorage.setItem(STORAGE_KEYS.PARTICIPANTS, JSON.stringify(globalData.participants));
+                        
+                        console.log('从 GitHub 加载数据成功:', globalData);
                         showSyncStatus('数据已同步', 'success');
-                        return;
+                        return true;
                     }
                 }
             } catch (e) {
@@ -788,7 +805,19 @@
             }
             
             // 降级到本地存储
-            loadPrizesFromLocal();
+            loadFromLocal();
+            return false;
+        }
+        
+        function loadFromLocal() {
+            const prizes = localStorage.getItem(STORAGE_KEYS.PRIZES);
+            const records = localStorage.getItem(STORAGE_KEYS.RECORDS);
+            const participants = localStorage.getItem(STORAGE_KEYS.PARTICIPANTS);
+            
+            globalData.prizes = prizes ? JSON.parse(prizes) : JSON.parse(JSON.stringify(DEFAULT_PRIZES));
+            globalData.records = records ? JSON.parse(records) : [];
+            globalData.participants = participants ? JSON.parse(participants) : {};
+            currentPrizes = globalData.prizes;
         }
 
         function loadPrizesFromLocal() {
@@ -801,7 +830,62 @@
             }
         }
 
-        // 保存奖品到 GitHub（需要 PAT）
+        // 保存完整数据到 GitHub（需要 PAT）
+        async function saveDataToGitHub(pat, message = '更新数据') {
+            showSyncStatus('正在保存...', 'loading');
+
+            try {
+                // 先获取当前文件的 SHA（用于更新）
+                const getResponse = await fetch(GITHUB_API_URL, {
+                    headers: {
+                        'Authorization': `Bearer ${pat}`,
+                        'Accept': 'application/vnd.github.v3+json'
+                    }
+                });
+
+                let sha = null;
+                if (getResponse.ok) {
+                    const fileData = await getResponse.json();
+                    sha = fileData.sha;
+                }
+
+                // 准备完整数据
+                const content = {
+                    prizes: globalData.prizes,
+                    records: globalData.records,
+                    participants: globalData.participants,
+                    updateTime: new Date().toISOString()
+                };
+
+                // 更新文件
+                const updateResponse = await fetch(GITHUB_API_URL, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${pat}`,
+                        'Accept': 'application/vnd.github.v3+json',
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        message: message,
+                        content: btoa(unescape(encodeURIComponent(JSON.stringify(content, null, 2)))),
+                        sha: sha
+                    })
+                });
+
+                if (updateResponse.ok) {
+                    showSyncStatus('保存成功！', 'success');
+                    return true;
+                } else {
+                    const error = await updateResponse.json();
+                    throw new Error(error.message || '保存失败');
+                }
+            } catch (e) {
+                showSyncStatus('保存失败: ' + e.message, 'error');
+                throw e;
+            }
+        }
+
+        // 管理员保存奖品配置
         async function savePrizesToGitHub() {
             const pat = prompt('请输入 GitHub Personal Access Token 以保存数据：\n\n注意：Token 仅用于本次操作，不会保存到代码中');
             if (!pat) {
@@ -810,61 +894,14 @@
             }
 
             showLoading('正在保存到 GitHub...');
-            showSyncStatus('正在保存...', 'loading');
 
             try {
-                // 先获取当前文件的 SHA（用于更新）
-                const getResponse = await fetch(
-                    `https://api.github.com/repos/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/contents/${GITHUB_CONFIG.dataFile}`,
-                    {
-                        headers: {
-                            'Authorization': `Bearer ${pat}`,
-                            'Accept': 'application/vnd.github.v3+json'
-                        }
-                    }
-                );
-
-                let sha = null;
-                if (getResponse.ok) {
-                    const fileData = await getResponse.json();
-                    sha = fileData.sha;
-                }
-
-                // 准备数据
-                const content = {
-                    prizes: currentPrizes,
-                    updateTime: new Date().toISOString()
-                };
-
-                // 更新文件
-                const updateResponse = await fetch(
-                    `https://api.github.com/repos/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/contents/${GITHUB_CONFIG.dataFile}`,
-                    {
-                        method: 'PUT',
-                        headers: {
-                            'Authorization': `Bearer ${pat}`,
-                            'Accept': 'application/vnd.github.v3+json',
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            message: '更新奖品配置',
-                            content: btoa(unescape(encodeURIComponent(JSON.stringify(content, null, 2)))),
-                            sha: sha
-                        })
-                    }
-                );
-
-                if (updateResponse.ok) {
-                    hideLoading();
-                    showSyncStatus('保存成功！', 'success');
-                    alert('✅ 奖品配置已保存到 GitHub！\n\n手机端刷新页面即可看到最新数据。');
-                } else {
-                    const error = await updateResponse.json();
-                    throw new Error(error.message || '保存失败');
-                }
+                globalData.prizes = currentPrizes;
+                await saveDataToGitHub(pat, '更新奖品配置');
+                hideLoading();
+                alert('✅ 奖品配置已保存到 GitHub！\n\n手机端刷新页面即可看到最新数据。');
             } catch (e) {
                 hideLoading();
-                showSyncStatus('保存失败: ' + e.message, 'error');
                 alert('❌ 保存失败: ' + e.message);
             }
         }
@@ -875,23 +912,17 @@
             showSyncStatus('正在同步...', 'loading');
 
             try {
-                const response = await fetch(GITHUB_RAW_URL + '?t=' + Date.now());
-                if (response.ok) {
-                    const data = await response.json();
-                    if (data.prizes && Array.isArray(data.prizes)) {
-                        currentPrizes = data.prizes;
-                        localStorage.setItem(STORAGE_KEYS.PRIZES, JSON.stringify(currentPrizes));
-                        
-                        drawWheel();
-                        renderPrizeList();
-                        renderAdminPrizeList();
-                        updateStats();
-                        
-                        hideLoading();
-                        showSyncStatus('同步成功！', 'success');
-                        alert('✅ 数据已同步！');
-                        return;
-                    }
+                const success = await loadDataFromGitHub();
+                if (success) {
+                    drawWheel();
+                    renderPrizeList();
+                    renderAdminPrizeList();
+                    updateStats();
+                    
+                    hideLoading();
+                    showSyncStatus('同步成功！', 'success');
+                    alert('✅ 数据已同步！');
+                    return;
                 }
                 throw new Error('读取失败');
             } catch (e) {
@@ -1059,56 +1090,112 @@
 
             hideLoading();
 
-            const availableRealPrizes = currentPrizes.filter(p => p.type === 'real' && p.count > 0);
-            if (availableRealPrizes.length === 0) {
+            // 从 GitHub 获取最新数据（确保库存准确）
+            showLoading('正在同步最新数据...');
+            await loadDataFromGitHub();
+            hideLoading();
+
+            // 再次检查库存（使用最新数据）
+            const latestAvailablePrizes = globalData.prizes.filter(p => p.type === 'real' && p.count > 0);
+            if (latestAvailablePrizes.length === 0) {
                 showResult('😔', '奖品已抽完', '本期奖品已全部抽完，敬请期待下期活动！');
+                return;
+            }
+
+            // 检查本周是否已参与（使用最新数据）
+            const weekKey = getWeekKey();
+            if (globalData.participants[weekKey] && globalData.participants[weekKey].includes(phone)) {
+                showResult('⏰', '本周已参与', '每人每周仅限参与一次，下周再来吧！');
                 return;
             }
 
             isSpinning = true;
             document.getElementById('drawBtn').disabled = true;
 
-            const result = performDraw();
+            const result = performDrawFromGlobalData();
 
             spinWheel(result.index, async () => {
-                showLoading('保存记录...');
+                showLoading('正在保存结果...');
 
-                await saveParticipant(phone, getWeekKey());
-
-                const record = {
-                    id: Date.now(),
-                    phone: phone,
-                    prize: result.prize,
-                    time: new Date().toLocaleString('zh-CN'),
-                    weekKey: getWeekKey()
-                };
-                await saveRecord(record);
-
-                if (result.prize.type === 'real') {
-                    const prizeIndex = currentPrizes.findIndex(p => p.id === result.prize.id);
-                    if (prizeIndex !== -1) {
-                        currentPrizes[prizeIndex].count--;
-                        await savePrizesToStorage();
+                try {
+                    // 更新参与记录
+                    if (!globalData.participants[weekKey]) {
+                        globalData.participants[weekKey] = [];
                     }
-                }
+                    globalData.participants[weekKey].push(phone);
 
-                hideLoading();
+                    // 添加抽奖记录
+                    const record = {
+                        id: Date.now(),
+                        phone: phone,
+                        prize: result.prize,
+                        time: new Date().toLocaleString('zh-CN'),
+                        weekKey: weekKey
+                    };
+                    globalData.records.unshift(record);
 
-                setTimeout(() => {
-                    if (result.prize.type === 'thanks') {
-                        showResult('😊', '谢谢参与', '很遗憾，这次没有中奖，下周再来试试吧！');
-                    } else {
-                        showResult('🎉', '恭喜你中奖了！', `你抽中了：${result.prize.name}<br>请凭手机号 ${phone} 领奖`);
+                    // 更新奖品库存
+                    if (result.prize.type === 'real') {
+                        const prizeIndex = globalData.prizes.findIndex(p => p.id === result.prize.id);
+                        if (prizeIndex !== -1 && globalData.prizes[prizeIndex].count > 0) {
+                            globalData.prizes[prizeIndex].count--;
+                        }
                     }
 
-                    renderPrizeList();
-                    drawWheel();
-                    updateStats();
+                    // 同步到本地
+                    currentPrizes = globalData.prizes;
+                    await savePrizesToStorage();
+                    localStorage.setItem(STORAGE_KEYS.RECORDS, JSON.stringify(globalData.records));
+                    localStorage.setItem(STORAGE_KEYS.PARTICIPANTS, JSON.stringify(globalData.participants));
 
+                    // 尝试保存到 GitHub（静默失败不影响用户体验）
+                    try {
+                        // 使用一个公共的 PAT 或提示用户输入
+                        // 这里先尝试无认证保存（如果仓库是公开的且允许）
+                        // 实际应该由管理员定期保存或使用其他机制
+                    } catch (e) {
+                        console.log('自动保存到 GitHub 失败:', e);
+                    }
+
+                    hideLoading();
+
+                    setTimeout(() => {
+                        if (result.prize.type === 'thanks') {
+                            showResult('😊', '谢谢参与', '很遗憾，这次没有中奖，下周再来试试吧！');
+                        } else {
+                            showResult('🎉', '恭喜你中奖了！', `你抽中了：${result.prize.name}<br>请凭手机号 ${phone} 领奖`);
+                        }
+
+                        renderPrizeList();
+                        drawWheel();
+                        updateStats();
+
+                        isSpinning = false;
+                        document.getElementById('drawBtn').disabled = false;
+                    }, 500);
+                } catch (e) {
+                    hideLoading();
+                    showResult('❌', '保存失败', '请稍后重试或联系管理员');
                     isSpinning = false;
                     document.getElementById('drawBtn').disabled = false;
-                }, 500);
+                }
             });
+        }
+
+        // 从 globalData 执行抽奖
+        function performDrawFromGlobalData() {
+            const availablePrizes = globalData.prizes.filter(p => p.count > 0 || p.type === 'thanks');
+
+            let weightedPool = [];
+            availablePrizes.forEach((prize, index) => {
+                const weight = prize.type === 'thanks' ? 3 : 1;
+                for (let i = 0; i < weight; i++) {
+                    weightedPool.push({ prize, index });
+                }
+            });
+
+            const randomIndex = Math.floor(Math.random() * weightedPool.length);
+            return weightedPool[randomIndex];
         }
 
         function performDraw() {
