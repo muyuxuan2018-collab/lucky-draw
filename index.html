@@ -729,28 +729,35 @@
 
         // ==================== 数据操作 ====================
         async function loadPrizes() {
+            console.log('开始加载奖品数据...');
             if (isCloudReady) {
                 try {
                     // 强制从云端获取最新数据
+                    console.log('从云端获取数据...');
                     const res = await db.collection('prizes').get();
+                    console.log('云端返回数据:', res);
+                    
                     if (res.data && res.data.length > 0) {
                         // 从云端加载
                         currentPrizes = res.data[0].prizes || DEFAULT_PRIZES;
                         // 同时更新本地缓存
                         localStorage.setItem(STORAGE_KEYS.PRIZES, JSON.stringify(currentPrizes));
-                        console.log('从云端加载奖品配置:', currentPrizes);
+                        console.log('从云端加载奖品配置成功:', JSON.stringify(currentPrizes));
                     } else {
                         // 云端没有数据，使用默认值并保存到云端
+                        console.log('云端无数据，使用默认值');
                         currentPrizes = JSON.parse(JSON.stringify(DEFAULT_PRIZES));
                         await savePrizesToCloud();
                         console.log('初始化云端奖品配置');
                     }
                 } catch (e) {
                     console.error('从云端加载奖品失败:', e);
+                    console.error('错误详情:', e.message, e.code);
                     // 降级到本地存储
                     loadPrizesFromLocal();
                 }
             } else {
+                console.log('云开发未就绪，使用本地存储');
                 loadPrizesFromLocal();
             }
         }
@@ -777,24 +784,34 @@
         
         async function savePrizesToCloud() {
             try {
+                console.log('开始保存奖品到云端...', currentPrizes);
                 const res = await db.collection('prizes').get();
+                console.log('查询现有数据:', res);
+                
                 if (res.data && res.data.length > 0) {
                     // 更新现有记录
-                    await db.collection('prizes').doc(res.data[0]._id).update({
+                    console.log('更新记录:', res.data[0]._id);
+                    const updateRes = await db.collection('prizes').doc(res.data[0]._id).update({
                         prizes: currentPrizes,
                         updateTime: new Date().toISOString()
                     });
+                    console.log('更新结果:', updateRes);
                 } else {
                     // 创建新记录
-                    await db.collection('prizes').add({
+                    console.log('创建新记录');
+                    const addRes = await db.collection('prizes').add({
                         prizes: currentPrizes,
                         createTime: new Date().toISOString(),
                         updateTime: new Date().toISOString()
                     });
+                    console.log('创建结果:', addRes);
                 }
                 console.log('奖品配置已同步到云端');
+                alert('奖品已保存到云端');
             } catch (e) {
                 console.error('同步奖品到云端失败:', e);
+                console.error('错误详情:', e.message, e.code);
+                alert('保存到云端失败: ' + e.message + '，但已保存到本地');
             }
         }
 
