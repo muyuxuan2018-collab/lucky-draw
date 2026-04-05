@@ -694,8 +694,9 @@
         // ==================== 云开发初始化 ====================
         async function initCloud() {
             try {
-                // 初始化云开发
+                // 初始化云开发 - 使用 identityless 模式（免登录）
                 cloudApp = new cloud.Cloud({
+                    identityless: true,
                     appid: CLOUD_CONFIG.appid,
                     resourceAppid: CLOUD_CONFIG.resourceAppid,
                     resourceEnv: CLOUD_CONFIG.resourceEnv
@@ -703,22 +704,6 @@
                 
                 await cloudApp.init();
                 console.log('云开发初始化完成');
-                
-                // 获取 auth 对象并匿名登录
-                const auth = cloudApp.auth();
-                console.log('获取 auth 对象');
-                
-                // 先检查登录状态
-                const loginState = await auth.getLoginState();
-                console.log('当前登录状态:', loginState);
-                
-                if (!loginState) {
-                    // 未登录，执行匿名登录
-                    await auth.signInAnonymously();
-                    console.log('匿名登录成功');
-                } else {
-                    console.log('已有登录状态');
-                }
                 
                 db = cloudApp.database();
                 isCloudReady = true;
