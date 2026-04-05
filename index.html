@@ -696,9 +696,19 @@
         
         // ==================== 云开发初始化 ====================
         async function initCloud() {
-            // 使用 HTTP 方式，不需要初始化云开发 SDK
-            console.log('使用 HTTP 方式连接云端');
-            isCloudReady = true;
+            try {
+                // 初始化云开发 SDK
+                cloudApp = cloud.init({
+                    env: CLOUD_CONFIG.resourceEnv,
+                    identityless: true  // 免登录模式
+                });
+                db = cloudApp.database();
+                isCloudReady = true;
+                console.log('云开发初始化成功');
+            } catch (e) {
+                console.error('云开发初始化失败:', e);
+                isCloudReady = false;
+            }
         }
         
         // 显示/隐藏加载
@@ -716,21 +726,18 @@
         async function loadPrizes() {
             console.log('开始加载奖品数据...');
             try {
-                // 使用 HTTP 直接请求云函数
-                console.log('HTTP 请求获取数据...');
-                const response = await fetch(`${CLOUD_HTTP_BASE}/getPrizes`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({})
+                // 使用云函数调用
+                console.log('调用云函数 getPrizes...');
+                const res = await cloudApp.callFunction({
+                    name: 'getPrizes',
+                    data: {}
                 });
-                const res = await response.json();
-                console.log('HTTP 返回:', res);
                 
-                if (res.success && res.data && res.data.prizes) {
+                console.log('云函数返回:', res);
+                
+                if (res.result && res.result.success && res.result.data && res.result.data.prizes) {
                     // 从云端加载
-                    currentPrizes = res.data.prizes;
+                    currentPrizes = res.result.data.prizes;
                     // 同时更新本地缓存
                     localStorage.setItem(STORAGE_KEYS.PRIZES, JSON.stringify(currentPrizes));
                     console.log('从云端加载奖品配置成功:', JSON.stringify(currentPrizes));
@@ -775,24 +782,21 @@
             try {
                 console.log('开始保存奖品到云端...', currentPrizes);
                 
-                // 使用 HTTP 直接请求云函数
-                const response = await fetch(`${CLOUD_HTTP_BASE}/savePrizes`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
+                // 使用云函数调用
+                const res = await cloudApp.callFunction({
+                    name: 'savePrizes',
+                    data: {
                         prizes: currentPrizes
-                    })
+                    }
                 });
-                const res = await response.json();
-                console.log('HTTP 返回:', res);
                 
-                if (res.success) {
+                console.log('云函数返回:', res);
+                
+                if (res.result && res.result.success) {
                     console.log('奖品配置已同步到云端');
                     alert('奖品已保存到云端');
                 } else {
-                    throw new Error(res.message || '保存失败');
+                    throw new Error(res.result && res.result.message ? res.result.message : '保存失败');
                 }
             } catch (e) {
                 console.error('同步奖品到云端失败:', e);
