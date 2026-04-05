@@ -3,7 +3,7 @@
     {
       "id": 1,
       "name": "AD钙奶",
-      "count": 15,
+      "count": 13,
       "type": "real",
       "color": "#3498db"
     },
@@ -17,7 +17,7 @@
     {
       "id": 3,
       "name": "棉花糖",
-      "count": 15,
+      "count": 13,
       "type": "real",
       "color": "#e91e63"
     },
@@ -73,10 +73,10 @@
     {
       "id": 11,
       "name": "巧克力",
-      "count": 9,
+      "count": 13,
       "type": "real",
       "color": "#3498db"
     }
   ],
-  "updateTime": "2026-04-05T09:47:51.930Z"
+  "updateTime": "2026-04-05T09:56:46.839Z"
 }
