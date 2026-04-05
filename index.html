@@ -731,11 +731,14 @@
         async function loadPrizes() {
             if (isCloudReady) {
                 try {
+                    // 强制从云端获取最新数据
                     const res = await db.collection('prizes').get();
                     if (res.data && res.data.length > 0) {
                         // 从云端加载
                         currentPrizes = res.data[0].prizes || DEFAULT_PRIZES;
-                        console.log('从云端加载奖品配置');
+                        // 同时更新本地缓存
+                        localStorage.setItem(STORAGE_KEYS.PRIZES, JSON.stringify(currentPrizes));
+                        console.log('从云端加载奖品配置:', currentPrizes);
                     } else {
                         // 云端没有数据，使用默认值并保存到云端
                         currentPrizes = JSON.parse(JSON.stringify(DEFAULT_PRIZES));
@@ -1126,7 +1129,7 @@
         }
 
         // ==================== 标签切换 ====================
-        function switchTab(tabName) {
+        async function switchTab(tabName) {
             // 更新标签按钮状态
             document.querySelectorAll('.nav-tab').forEach(tab => {
                 tab.classList.remove('active');
@@ -1142,12 +1145,21 @@
             document.getElementById(tabName).classList.add('active');
 
             if (tabName === 'records') {
+                // 重新加载最新数据
+                await loadPrizes();
                 renderRecords();
                 updateStats();
             } else if (tabName === 'admin') {
+                // 重新加载最新数据
+                await loadPrizes();
                 if (isAdminLoggedIn) {
                     renderAdminPrizeList();
                 }
+            } else if (tabName === 'lottery') {
+                // 抽奖页面也刷新数据
+                await loadPrizes();
+                renderPrizeList();
+                drawWheel();
             }
         }
 
