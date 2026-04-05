@@ -770,8 +770,11 @@
                 // 生成同步链接
                 const baseUrl = window.location.origin + window.location.pathname;
                 const jsonStr = JSON.stringify(content);
+                console.log('JSON字符串:', jsonStr);
                 const encoded = encodeURIComponent(encodeURIComponent(jsonStr));
+                console.log('编码后:', encoded);
                 const syncUrl = `${baseUrl}?sync=${encoded}`;
+                console.log('同步链接:', syncUrl);
                 
                 // 显示同步二维码
                 showSyncQRCode(syncUrl);
