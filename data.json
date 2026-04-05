@@ -38,7 +38,7 @@
     {
       "id": 6,
       "name": "啤酒",
-      "count": 5,
+      "count": 13,
       "type": "real",
       "color": "#f39c12"
     },
@@ -52,7 +52,7 @@
     {
       "id": 8,
       "name": "牛奶",
-      "count": 5,
+      "count": 13,
       "type": "real",
       "color": "#ecf0f1"
     },
@@ -78,5 +78,5 @@
       "color": "#3498db"
     }
   ],
-  "updateTime": "2026-04-05T09:56:46.839Z"
+  "updateTime": "2026-04-05T10:17:05.027Z"
 }
