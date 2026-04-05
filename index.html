@@ -789,9 +789,14 @@
                 
                 // 使用 set 方法（upsert模式），如果文档不存在则创建，存在则覆盖
                 const docId = 'prizes_config'; // 使用固定ID
-                const setRes = await db.collection('prizes').doc(docId).set({
+                const data = {
                     prizes: currentPrizes,
                     updateTime: new Date().toISOString()
+                };
+                console.log('准备保存的数据:', data);
+                
+                const setRes = await db.collection('prizes').doc(docId).set({
+                    data: data
                 });
                 console.log('保存结果:', setRes);
                 console.log('奖品配置已同步到云端');
