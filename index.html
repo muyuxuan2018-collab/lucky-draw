@@ -625,7 +625,27 @@
         </div>
     </div>
 
+    <!-- 加载中提示 -->
+    <div id="loadingModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 2000; justify-content: center; align-items: center;">
+        <div style="background: white; padding: 30px; border-radius: 10px; text-align: center;">
+            <div style="font-size: 40px; margin-bottom: 10px;">⏳</div>
+            <p>正在同步数据...</p>
+        </div>
+    </div>
+
+    <!-- 腾讯云开发 SDK -->
+    <script src="https://res.wx.qq.com/open/js/cloudbase/1.1.0/cloud.js"></script>
     <script>
+        // ==================== 腾讯云开发配置 ====================
+        const CLOUD_CONFIG = {
+            resourceAppid: 'wx66ec7ddbf2b6dae9',
+            resourceEnv: 'lucky-draw-4gl7fuwg455317f9'
+        };
+        
+        let cloudApp = null;
+        let db = null;
+        let isCloudReady = false;
+        
         // ==================== 数据存储 ====================
         const STORAGE_KEYS = {
             PRIZES: 'lottery_prizes_v2',
@@ -654,59 +674,213 @@
         let isAdminLoggedIn = false;
 
         // ==================== 初始化 ====================
-        function init() {
-            loadPrizes();
+        async function init() {
+            showLoading('正在初始化...');
+            
+            // 初始化云开发
+            await initCloud();
+            
+            // 加载数据
+            await loadPrizes();
             drawWheel();
             renderPrizeList();
             renderRecords();
             updateStats();
+            
+            hideLoading();
+        }
+        
+        // ==================== 云开发初始化 ====================
+        async function initCloud() {
+            try {
+                cloudApp = new cloud.Cloud({
+                    identityless: true,
+                    resourceAppid: CLOUD_CONFIG.resourceAppid,
+                    resourceEnv: CLOUD_CONFIG.resourceEnv
+                });
+                
+                await cloudApp.init();
+                db = cloudApp.database();
+                isCloudReady = true;
+                console.log('云开发初始化成功');
+            } catch (e) {
+                console.error('云开发初始化失败:', e);
+                isCloudReady = false;
+                alert('云开发连接失败，将使用本地存储模式');
+            }
+        }
+        
+        // 显示/隐藏加载
+        function showLoading(text = '加载中...') {
+            const modal = document.getElementById('loadingModal');
+            modal.querySelector('p').textContent = text;
+            modal.style.display = 'flex';
+        }
+        
+        function hideLoading() {
+            document.getElementById('loadingModal').style.display = 'none';
         }
 
         // ==================== 数据操作 ====================
-        function loadPrizes() {
+        async function loadPrizes() {
+            if (isCloudReady) {
+                try {
+                    const res = await db.collection('prizes').get();
+                    if (res.data && res.data.length > 0) {
+                        // 从云端加载
+                        currentPrizes = res.data[0].prizes || DEFAULT_PRIZES;
+                        console.log('从云端加载奖品配置');
+                    } else {
+                        // 云端没有数据，使用默认值并保存到云端
+                        currentPrizes = JSON.parse(JSON.stringify(DEFAULT_PRIZES));
+                        await savePrizesToCloud();
+                        console.log('初始化云端奖品配置');
+                    }
+                } catch (e) {
+                    console.error('从云端加载奖品失败:', e);
+                    // 降级到本地存储
+                    loadPrizesFromLocal();
+                }
+            } else {
+                loadPrizesFromLocal();
+            }
+        }
+        
+        function loadPrizesFromLocal() {
             const saved = localStorage.getItem(STORAGE_KEYS.PRIZES);
             if (saved) {
                 currentPrizes = JSON.parse(saved);
             } else {
                 currentPrizes = JSON.parse(JSON.stringify(DEFAULT_PRIZES));
-                savePrizesToStorage();
+                localStorage.setItem(STORAGE_KEYS.PRIZES, JSON.stringify(currentPrizes));
             }
         }
 
-        function savePrizesToStorage() {
+        async function savePrizesToStorage() {
+            // 保存到本地
             localStorage.setItem(STORAGE_KEYS.PRIZES, JSON.stringify(currentPrizes));
+            
+            // 保存到云端
+            if (isCloudReady) {
+                await savePrizesToCloud();
+            }
+        }
+        
+        async function savePrizesToCloud() {
+            try {
+                const res = await db.collection('prizes').get();
+                if (res.data && res.data.length > 0) {
+                    // 更新现有记录
+                    await db.collection('prizes').doc(res.data[0]._id).update({
+                        prizes: currentPrizes,
+                        updateTime: new Date().toISOString()
+                    });
+                } else {
+                    // 创建新记录
+                    await db.collection('prizes').add({
+                        prizes: currentPrizes,
+                        createTime: new Date().toISOString(),
+                        updateTime: new Date().toISOString()
+                    });
+                }
+                console.log('奖品配置已同步到云端');
+            } catch (e) {
+                console.error('同步奖品到云端失败:', e);
+            }
         }
 
-        function getRecords() {
+        async function getRecords() {
+            if (isCloudReady) {
+                try {
+                    const res = await db.collection('draw_records').orderBy('time', 'desc').get();
+                    return res.data || [];
+                } catch (e) {
+                    console.error('从云端获取记录失败:', e);
+                    return getRecordsFromLocal();
+                }
+            }
+            return getRecordsFromLocal();
+        }
+        
+        function getRecordsFromLocal() {
             const saved = localStorage.getItem(STORAGE_KEYS.RECORDS);
             return saved ? JSON.parse(saved) : [];
         }
 
-        function saveRecord(record) {
-            const records = getRecords();
+        async function saveRecord(record) {
+            // 保存到本地
+            const records = getRecordsFromLocal();
             records.unshift(record);
             localStorage.setItem(STORAGE_KEYS.RECORDS, JSON.stringify(records));
+            
+            // 保存到云端
+            if (isCloudReady) {
+                try {
+                    await db.collection('draw_records').add(record);
+                    console.log('抽奖记录已同步到云端');
+                } catch (e) {
+                    console.error('同步记录到云端失败:', e);
+                }
+            }
         }
 
-        function getParticipants() {
+        async function getParticipants() {
+            if (isCloudReady) {
+                try {
+                    const res = await db.collection('participants').get();
+                    if (res.data && res.data.length > 0) {
+                        return res.data[0].data || {};
+                    }
+                } catch (e) {
+                    console.error('从云端获取参与者失败:', e);
+                }
+            }
+            return getParticipantsFromLocal();
+        }
+        
+        function getParticipantsFromLocal() {
             const saved = localStorage.getItem(STORAGE_KEYS.PARTICIPANTS);
             return saved ? JSON.parse(saved) : {};
         }
 
-        function saveParticipant(phone, weekKey) {
-            const participants = getParticipants();
+        async function saveParticipant(phone, weekKey) {
+            const participants = await getParticipants();
             if (!participants[weekKey]) {
                 participants[weekKey] = [];
             }
             if (!participants[weekKey].includes(phone)) {
                 participants[weekKey].push(phone);
             }
+            
+            // 保存到本地
             localStorage.setItem(STORAGE_KEYS.PARTICIPANTS, JSON.stringify(participants));
+            
+            // 保存到云端
+            if (isCloudReady) {
+                try {
+                    const res = await db.collection('participants').get();
+                    if (res.data && res.data.length > 0) {
+                        await db.collection('participants').doc(res.data[0]._id).update({
+                            data: participants,
+                            updateTime: new Date().toISOString()
+                        });
+                    } else {
+                        await db.collection('participants').add({
+                            data: participants,
+                            createTime: new Date().toISOString(),
+                            updateTime: new Date().toISOString()
+                        });
+                    }
+                    console.log('参与者记录已同步到云端');
+                } catch (e) {
+                    console.error('同步参与者到云端失败:', e);
+                }
+            }
         }
 
-        function hasParticipatedThisWeek(phone) {
+        async function hasParticipatedThisWeek(phone) {
             const weekKey = getWeekKey();
-            const participants = getParticipants();
+            const participants = await getParticipants();
             return participants[weekKey] && participants[weekKey].includes(phone);
         }
 
@@ -811,7 +985,7 @@
         }
 
         // ==================== 抽奖逻辑 ====================
-        function startDraw() {
+        async function startDraw() {
             if (isSpinning) return;
 
             const phone = document.getElementById('phone').value.trim();
@@ -822,11 +996,17 @@
                 return;
             }
 
+            showLoading('检查参与记录...');
+            
             // 检查本周是否已参与
-            if (hasParticipatedThisWeek(phone)) {
+            const hasParticipated = await hasParticipatedThisWeek(phone);
+            if (hasParticipated) {
+                hideLoading();
                 showResult('⏰', '本周已参与', '每人每周仅限参与一次，下周再来吧！');
                 return;
             }
+
+            hideLoading();
 
             // 检查是否有奖品
             const availableRealPrizes = currentPrizes.filter(p => p.type === 'real' && p.count > 0);
@@ -842,9 +1022,11 @@
             const result = performDraw();
             
             // 旋转转盘
-            spinWheel(result.index, () => {
+            spinWheel(result.index, async () => {
+                showLoading('保存记录...');
+                
                 // 保存参与记录
-                saveParticipant(phone, getWeekKey());
+                await saveParticipant(phone, getWeekKey());
                 
                 // 保存中奖记录
                 const record = {
@@ -854,17 +1036,19 @@
                     time: new Date().toLocaleString('zh-CN'),
                     weekKey: getWeekKey()
                 };
-                saveRecord(record);
+                await saveRecord(record);
 
                 // 如果是实物奖品，减少库存
                 if (result.prize.type === 'real') {
                     const prizeIndex = currentPrizes.findIndex(p => p.id === result.prize.id);
                     if (prizeIndex !== -1) {
                         currentPrizes[prizeIndex].count--;
-                        savePrizesToStorage();
+                        await savePrizesToStorage();
                     }
                 }
 
+                hideLoading();
+                
                 // 显示结果
                 setTimeout(() => {
                     if (result.prize.type === 'thanks') {
@@ -962,8 +1146,11 @@
         }
 
         // ==================== 记录页面 ====================
-        function renderRecords() {
-            const records = getRecords();
+        async function renderRecords() {
+            showLoading('加载记录...');
+            const records = await getRecords();
+            hideLoading();
+            
             const list = document.getElementById('recordsList');
             
             if (records.length === 0) {
@@ -997,11 +1184,13 @@
             return phone.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2');
         }
 
-        function filterRecords() {
+        async function filterRecords() {
             const phoneFilter = document.getElementById('searchPhone').value.trim();
             const prizeFilter = document.getElementById('filterPrize').value;
             
-            let records = getRecords();
+            showLoading('筛选中...');
+            let records = await getRecords();
+            hideLoading();
             
             if (phoneFilter) {
                 records = records.filter(r => r.phone.includes(phoneFilter));
@@ -1039,8 +1228,8 @@
             renderRecords();
         }
 
-        function updateStats() {
-            const records = getRecords();
+        async function updateStats() {
+            const records = await getRecords();
             const realPrizes = currentPrizes.filter(p => p.type === 'real');
             const remainingPrizes = realPrizes.reduce((sum, p) => sum + p.count, 0);
             const winners = records.filter(r => r.prize.type === 'real').length;
@@ -1164,7 +1353,7 @@
             });
         }
 
-        function savePrize() {
+        async function savePrize() {
             const name = document.getElementById('prizeName').value.trim();
             const count = parseInt(document.getElementById('prizeCount').value) || 0;
             const type = document.getElementById('prizeType').value;
@@ -1198,7 +1387,10 @@
                 });
             }
 
-            savePrizesToStorage();
+            showLoading('保存中...');
+            await savePrizesToStorage();
+            hideLoading();
+            
             renderAdminPrizeList();
             renderPrizeList();
             drawWheel();
@@ -1217,7 +1409,7 @@
         }
 
         // 删除奖品
-        function deletePrize(id) {
+        async function deletePrize(id) {
             console.log('deletePrize called with id:', id);
             if (!confirm('确定要删除这个奖品吗？')) {
                 console.log('Delete cancelled by user');
@@ -1230,7 +1422,10 @@
             console.log('Before:', originalLength, 'After:', currentPrizes.length);
             
             if (currentPrizes.length < originalLength) {
-                savePrizesToStorage();
+                showLoading('删除中...');
+                await savePrizesToStorage();
+                hideLoading();
+                
                 renderAdminPrizeList();
                 renderPrizeList();
                 drawWheel();
@@ -1248,42 +1443,72 @@
         }
 
         // 清空所有记录
-        function clearAllRecords() {
+        async function clearAllRecords() {
             console.log('clearAllRecords called');
             if (!confirm('⚠️ 确定要清空所有抽奖记录吗？此操作不可恢复！')) {
                 console.log('Clear records cancelled by user');
                 return;
             }
             
+            showLoading('清空中...');
+            
             try {
                 localStorage.removeItem(STORAGE_KEYS.RECORDS);
                 localStorage.removeItem(STORAGE_KEYS.PARTICIPANTS);
-                console.log('Records cleared from localStorage');
+                
+                // 清空云端记录
+                if (isCloudReady) {
+                    const res = await db.collection('draw_records').get();
+                    for (const doc of res.data || []) {
+                        await db.collection('draw_records').doc(doc._id).remove();
+                    }
+                    await db.collection('participants').remove();
+                }
+                
+                console.log('Records cleared');
+                hideLoading();
                 alert('记录已清空！');
                 updateStats();
             } catch (e) {
+                hideLoading();
                 console.error('Error clearing records:', e);
                 alert('清空失败：' + e.message);
             }
         }
 
         // 重置所有数据
-        function resetAllData() {
+        async function resetAllData() {
             console.log('resetAllData called');
             if (!confirm('⚠️ 确定要重置所有数据吗？这将恢复默认奖品配置并清空所有记录！')) {
                 console.log('Reset all data cancelled by user');
                 return;
             }
             
+            showLoading('重置中...');
+            
             try {
                 localStorage.removeItem(STORAGE_KEYS.PRIZES);
                 localStorage.removeItem(STORAGE_KEYS.RECORDS);
                 localStorage.removeItem(STORAGE_KEYS.PARTICIPANTS);
-                console.log('All data cleared from localStorage');
+                
+                // 重置云端数据
+                if (isCloudReady) {
+                    // 清空记录
+                    const recordsRes = await db.collection('draw_records').get();
+                    for (const doc of recordsRes.data || []) {
+                        await db.collection('draw_records').doc(doc._id).remove();
+                    }
+                    // 清空参与者
+                    await db.collection('participants').remove();
+                }
+                
+                console.log('All data cleared');
                 
                 currentPrizes = JSON.parse(JSON.stringify(DEFAULT_PRIZES));
-                savePrizesToStorage();
+                await savePrizesToStorage();
                 console.log('Default prizes restored');
+                
+                hideLoading();
                 
                 renderAdminPrizeList();
                 renderPrizeList();
@@ -1291,6 +1516,7 @@
                 updateStats();
                 alert('数据已重置！');
             } catch (e) {
+                hideLoading();
                 console.error('Error resetting data:', e);
                 alert('重置失败：' + e.message);
             }
@@ -1299,8 +1525,10 @@
         // ==================== 数据导出功能 ====================
         
         // 导出抽奖记录为CSV
-        function exportRecords() {
-            const records = getRecords();
+        async function exportRecords() {
+            showLoading('加载记录...');
+            const records = await getRecords();
+            hideLoading();
             if (records.length === 0) {
                 alert('暂无抽奖记录可导出！');
                 return;
@@ -1372,8 +1600,10 @@
         }
         
         // 导出全部数据为CSV（包含多个工作表信息）
-        function exportAllData() {
-            const records = getRecords();
+        async function exportAllData() {
+            showLoading('加载数据...');
+            const records = await getRecords();
+            hideLoading();
             const timestamp = new Date().toLocaleString('zh-CN').replace(/[/:]/g, '-');
             
             // 构建完整的CSV内容，包含多个部分
