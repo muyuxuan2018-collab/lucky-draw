@@ -721,7 +721,7 @@
             const syncData = getUrlParam('sync');
             if (syncData) {
                 try {
-                    const decoded = JSON.parse(atob(decodeURIComponent(syncData)));
+                    const decoded = JSON.parse(decodeURIComponent(atob(syncData)));
                     if (decoded.prizes && Array.isArray(decoded.prizes)) {
                         currentPrizes = decoded.prizes;
                         localStorage.setItem(STORAGE_KEYS.PRIZES, JSON.stringify(currentPrizes));
@@ -769,8 +769,9 @@
                 
                 // 生成同步链接
                 const baseUrl = window.location.origin + window.location.pathname;
-                const syncParam = encodeURIComponent(btoa(JSON.stringify(content)));
-                const syncUrl = `${baseUrl}?sync=${syncParam}`;
+                const jsonStr = JSON.stringify(content);
+                const encoded = btoa(encodeURIComponent(jsonStr));
+                const syncUrl = `${baseUrl}?sync=${encoded}`;
                 
                 // 显示同步二维码
                 showSyncQRCode(syncUrl);
