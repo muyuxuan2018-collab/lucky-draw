@@ -447,6 +447,36 @@
             margin-bottom: 20px;
         }
 
+        /* 同步状态提示 */
+        .sync-status {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-size: 12px;
+            z-index: 9999;
+            display: none;
+        }
+
+        .sync-status.success {
+            background: #d4edda;
+            color: #155724;
+            display: block;
+        }
+
+        .sync-status.error {
+            background: #f8d7da;
+            color: #721c24;
+            display: block;
+        }
+
+        .sync-status.loading {
+            background: #fff3cd;
+            color: #856404;
+            display: block;
+        }
+
         @media (max-width: 600px) {
             .wheel-container {
                 width: 280px;
@@ -475,6 +505,9 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 </head>
 <body>
+    <!-- 同步状态提示 -->
+    <div id="syncStatus" class="sync-status"></div>
+
     <div class="container">
         <div class="header">
             <h1>🎁 幸运抽奖转转转</h1>
@@ -597,9 +630,19 @@
                     </table>
 
                     <div style="margin-top: 30px; padding: 20px; background: #e8f4f8; border-radius: 15px;">
-                        <h3 style="margin-bottom: 15px;">📱 数据同步</h3>
-                        <button type="button" class="btn btn-primary" onclick="savePrizesToCloud()">📱 生成同步二维码</button>
-                        <p style="margin-top: 10px; color: #666; font-size: 12px;">点击生成二维码，手机扫描即可同步最新奖品配置</p>
+                        <h3 style="margin-bottom: 15px;">☁️ 云端同步</h3>
+                        <button type="button" class="btn btn-primary" onclick="savePrizesToGitHub()">💾 保存到 GitHub</button>
+                        <button type="button" class="btn btn-success" style="margin-left: 10px;" onclick="loadPrizesFromGitHub()">🔄 从 GitHub 读取</button>
+                        <p style="margin-top: 10px; color: #666; font-size: 12px;">
+                            修改奖品后点击"保存到 GitHub"，手机端会自动同步最新数据<br>
+                            固定链接：<span id="githubPagesUrl" style="color: #667eea; font-weight: bold;"></span>
+                        </p>
+                    </div>
+
+                    <div style="margin-top: 30px; padding: 20px; background: #e8f4f8; border-radius: 15px;">
+                        <h3 style="margin-bottom: 15px;">📱 固定二维码</h3>
+                        <div id="fixedQRCode" style="margin: 15px 0;"></div>
+                        <p style="color: #666; font-size: 12px;">手机扫描此二维码即可参与抽奖，数据自动同步</p>
                     </div>
 
                     <div style="margin-top: 30px; padding: 20px; background: #e8f4f8; border-radius: 15px;">
@@ -637,20 +680,24 @@
     <div id="loadingModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 2000; justify-content: center; align-items: center;">
         <div style="background: white; padding: 30px; border-radius: 10px; text-align: center;">
             <div style="font-size: 40px; margin-bottom: 10px;">⏳</div>
-            <p>正在同步数据...</p>
+            <p id="loadingText">加载中...</p>
         </div>
     </div>
 
     <script>
-        // ==================== 配置 ====================
-        let isCloudReady = false;
+        // ==================== GitHub 配置 ====================
+        const GITHUB_CONFIG = {
+            owner: 'weiqi-gao',
+            repo: 'lucky-draw',
+            dataFile: 'data.json'
+        };
+
+        // GitHub Pages 固定链接
+        const GITHUB_PAGES_URL = `https://${GITHUB_CONFIG.owner}.github.io/${GITHUB_CONFIG.repo}/`;
         
-        // 从 URL 参数获取同步数据
-        function getUrlParam(name) {
-            const params = new URLSearchParams(window.location.search);
-            return params.get(name);
-        }
-        
+        // Raw 文件链接（用于读取数据）
+        const GITHUB_RAW_URL = `https://raw.githubusercontent.com/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/main/${GITHUB_CONFIG.dataFile}`;
+
         // ==================== 数据存储 ====================
         const STORAGE_KEYS = {
             PRIZES: 'lottery_prizes_v2',
@@ -658,7 +705,7 @@
             PARTICIPANTS: 'lottery_participants_v2'
         };
 
-        // 默认奖品配置 - 交错排列：每两个彩色之间夹1-2个灰色
+        // 默认奖品配置
         const DEFAULT_PRIZES = [
             { id: 1, name: 'AD钙奶', count: 5, type: 'real', color: '#3498db' },
             { id: 2, name: '谢谢参与', count: 999999, type: 'thanks', color: '#95a5a6' },
@@ -680,67 +727,70 @@
 
         // ==================== 初始化 ====================
         async function init() {
-            showLoading('正在初始化...');
+            showLoading('正在加载数据...');
             
-            // 初始化云开发
-            await initCloud();
-            
-            // 加载数据
+            // 加载奖品数据（优先从 GitHub 读取）
             await loadPrizes();
+            
             drawWheel();
             renderPrizeList();
             renderRecords();
             updateStats();
             
+            // 显示固定链接
+            document.getElementById('githubPagesUrl').textContent = GITHUB_PAGES_URL;
+            
             hideLoading();
         }
-        
-        // ==================== 初始化 ====================
-        async function initCloud() {
-            // GitHub 方案不需要初始化，直接设置为就绪
-            isCloudReady = true;
-            console.log('GitHub 同步模式已启用');
-        }
-        
-        // 显示/隐藏加载
+
+        // ==================== 显示/隐藏加载 ====================
         function showLoading(text = '加载中...') {
             const modal = document.getElementById('loadingModal');
-            modal.querySelector('p').textContent = text;
+            document.getElementById('loadingText').textContent = text;
             modal.style.display = 'flex';
         }
-        
+
         function hideLoading() {
             document.getElementById('loadingModal').style.display = 'none';
+        }
+
+        // ==================== 同步状态提示 ====================
+        function showSyncStatus(message, type = 'loading') {
+            const status = document.getElementById('syncStatus');
+            status.textContent = message;
+            status.className = 'sync-status ' + type;
+            
+            if (type !== 'loading') {
+                setTimeout(() => {
+                    status.className = 'sync-status';
+                }, 3000);
+            }
         }
 
         // ==================== 数据操作 ====================
         async function loadPrizes() {
             console.log('开始加载奖品数据...');
             
-            // 优先检查 URL 参数中的同步数据
-            const syncData = getUrlParam('sync');
-            if (syncData) {
-                try {
-                    const decoded = JSON.parse(decodeURIComponent(decodeURIComponent(syncData)));
-                    if (decoded.prizes && Array.isArray(decoded.prizes)) {
-                        currentPrizes = decoded.prizes;
-                        localStorage.setItem(STORAGE_KEYS.PRIZES, JSON.stringify(currentPrizes));
-                        console.log('从同步参数加载奖品配置成功:', JSON.stringify(currentPrizes));
-                        isCloudReady = true;
-                        // 清除 URL 参数
-                        window.history.replaceState({}, document.title, window.location.pathname);
+            try {
+                // 尝试从 GitHub 读取数据
+                const response = await fetch(GITHUB_RAW_URL + '?t=' + Date.now());
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.prizes && Array.isArray(data.prizes)) {
+                        currentPrizes = data.prizes;
+                        console.log('从 GitHub 加载奖品成功:', currentPrizes);
+                        showSyncStatus('数据已同步', 'success');
                         return;
                     }
-                } catch (e) {
-                    console.error('同步参数解析失败:', e);
                 }
+            } catch (e) {
+                console.log('从 GitHub 读取失败，使用本地数据:', e);
             }
             
             // 降级到本地存储
             loadPrizesFromLocal();
-            isCloudReady = false;
         }
-        
+
         function loadPrizesFromLocal() {
             const saved = localStorage.getItem(STORAGE_KEYS.PRIZES);
             if (saved) {
@@ -751,141 +801,129 @@
             }
         }
 
-        async function savePrizesToStorage() {
-            // 保存到本地
-            localStorage.setItem(STORAGE_KEYS.PRIZES, JSON.stringify(currentPrizes));
-            console.log('奖品已保存到本地');
-        }
-        
-        async function savePrizesToCloud() {
+        // 保存奖品到 GitHub（需要 PAT）
+        async function savePrizesToGitHub() {
+            const pat = prompt('请输入 GitHub Personal Access Token 以保存数据：\n\n注意：Token 仅用于本次操作，不会保存到代码中');
+            if (!pat) {
+                alert('已取消保存');
+                return;
+            }
+
+            showLoading('正在保存到 GitHub...');
+            showSyncStatus('正在保存...', 'loading');
+
             try {
-                console.log('生成同步二维码...', currentPrizes);
-                
+                // 先获取当前文件的 SHA（用于更新）
+                const getResponse = await fetch(
+                    `https://api.github.com/repos/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/contents/${GITHUB_CONFIG.dataFile}`,
+                    {
+                        headers: {
+                            'Authorization': `token ${pat}`,
+                            'Accept': 'application/vnd.github.v3+json'
+                        }
+                    }
+                );
+
+                let sha = null;
+                if (getResponse.ok) {
+                    const fileData = await getResponse.json();
+                    sha = fileData.sha;
+                }
+
                 // 准备数据
                 const content = {
                     prizes: currentPrizes,
                     updateTime: new Date().toISOString()
                 };
-                
-                // 生成同步链接
-                const baseUrl = window.location.origin + window.location.pathname;
-                const jsonStr = JSON.stringify(content);
-                console.log('JSON字符串:', jsonStr);
-                const encoded = encodeURIComponent(encodeURIComponent(jsonStr));
-                console.log('编码后:', encoded);
-                const syncUrl = `${baseUrl}?sync=${encoded}`;
-                console.log('同步链接:', syncUrl);
-                
-                // 显示同步二维码
-                showSyncQRCode(syncUrl);
-                
-                console.log('同步链接已生成');
+
+                // 更新文件
+                const updateResponse = await fetch(
+                    `https://api.github.com/repos/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/contents/${GITHUB_CONFIG.dataFile}`,
+                    {
+                        method: 'PUT',
+                        headers: {
+                            'Authorization': `token ${pat}`,
+                            'Accept': 'application/vnd.github.v3+json',
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            message: '更新奖品配置',
+                            content: btoa(unescape(encodeURIComponent(JSON.stringify(content, null, 2)))),
+                            sha: sha
+                        })
+                    }
+                );
+
+                if (updateResponse.ok) {
+                    hideLoading();
+                    showSyncStatus('保存成功！', 'success');
+                    alert('✅ 奖品配置已保存到 GitHub！\n\n手机端刷新页面即可看到最新数据。');
+                } else {
+                    const error = await updateResponse.json();
+                    throw new Error(error.message || '保存失败');
+                }
             } catch (e) {
-                console.error('生成同步链接失败:', e);
-                alert('生成同步链接失败: ' + e.message);
-            }
-        }
-        
-        // 显示同步链接
-        function showSyncQRCode(url) {
-            // 创建模态框
-            const modal = document.createElement('div');
-            modal.id = 'syncQRModal';
-            modal.style.cssText = `
-                position: fixed;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: 100%;
-                background: rgba(0,0,0,0.7);
-                z-index: 3000;
-                display: flex;
-                justify-content: center;
-                align-items: center;
-            `;
-            
-            // 生成短链接（使用短域名服务或简化）
-            modal.innerHTML = `
-                <div style="background: white; padding: 30px; border-radius: 15px; text-align: center; max-width: 90%; max-height: 90%; overflow: auto;">
-                    <h3 style="margin-bottom: 15px; color: #333;">📱 同步数据</h3>
-                    <p style="margin-bottom: 20px; color: #666; font-size: 14px;">复制下方链接，在手机浏览器中打开即可同步</p>
-                    <textarea id="syncUrlText" readonly style="width: 100%; height: 80px; padding: 10px; margin: 10px 0; border: 1px solid #ddd; border-radius: 5px; font-size: 12px; resize: none;">${url}</textarea>
-                    <div style="margin-top: 15px;">
-                        <button onclick="copySyncUrl()" style="padding: 10px 30px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 20px; cursor: pointer; font-size: 16px; margin-right: 10px;">📋 复制链接</button>
-                        <button onclick="closeSyncQRModal()" style="padding: 10px 30px; background: #6c757d; color: white; border: none; border-radius: 20px; cursor: pointer; font-size: 16px;">关闭</button>
-                    </div>
-                    <p style="margin-top: 15px; color: #999; font-size: 12px;">提示：也可以把链接生成二维码让别人扫描</p>
-                </div>
-            `;
-            
-            document.body.appendChild(modal);
-        }
-        
-        // 复制同步链接
-        function copySyncUrl() {
-            const textarea = document.getElementById('syncUrlText');
-            textarea.select();
-            document.execCommand('copy');
-            alert('链接已复制到剪贴板！');
-        }
-        
-        // 关闭同步二维码模态框
-        function closeSyncQRModal() {
-            const modal = document.getElementById('syncQRModal');
-            if (modal) {
-                modal.remove();
+                hideLoading();
+                showSyncStatus('保存失败: ' + e.message, 'error');
+                alert('❌ 保存失败: ' + e.message);
             }
         }
 
-        async function getRecords() {
-            if (isCloudReady) {
-                try {
-                    const res = await db.collection('draw_records').orderBy('time', 'desc').get();
-                    return res.data || [];
-                } catch (e) {
-                    console.error('从云端获取记录失败:', e);
-                    return getRecordsFromLocal();
+        // 从 GitHub 重新读取数据
+        async function loadPrizesFromGitHub() {
+            showLoading('正在从 GitHub 读取...');
+            showSyncStatus('正在同步...', 'loading');
+
+            try {
+                const response = await fetch(GITHUB_RAW_URL + '?t=' + Date.now());
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.prizes && Array.isArray(data.prizes)) {
+                        currentPrizes = data.prizes;
+                        localStorage.setItem(STORAGE_KEYS.PRIZES, JSON.stringify(currentPrizes));
+                        
+                        drawWheel();
+                        renderPrizeList();
+                        renderAdminPrizeList();
+                        updateStats();
+                        
+                        hideLoading();
+                        showSyncStatus('同步成功！', 'success');
+                        alert('✅ 数据已同步！');
+                        return;
+                    }
                 }
+                throw new Error('读取失败');
+            } catch (e) {
+                hideLoading();
+                showSyncStatus('同步失败', 'error');
+                alert('❌ 从 GitHub 读取失败: ' + e.message);
             }
+        }
+
+        async function savePrizesToStorage() {
+            localStorage.setItem(STORAGE_KEYS.PRIZES, JSON.stringify(currentPrizes));
+        }
+
+        async function getRecords() {
             return getRecordsFromLocal();
         }
-        
+
         function getRecordsFromLocal() {
             const saved = localStorage.getItem(STORAGE_KEYS.RECORDS);
             return saved ? JSON.parse(saved) : [];
         }
 
         async function saveRecord(record) {
-            // 保存到本地
             const records = getRecordsFromLocal();
             records.unshift(record);
             localStorage.setItem(STORAGE_KEYS.RECORDS, JSON.stringify(records));
-            
-            // 保存到云端
-            if (isCloudReady) {
-                try {
-                    await db.collection('draw_records').add(record);
-                    console.log('抽奖记录已同步到云端');
-                } catch (e) {
-                    console.error('同步记录到云端失败:', e);
-                }
-            }
         }
 
         async function getParticipants() {
-            if (isCloudReady) {
-                try {
-                    const res = await db.collection('participants').get();
-                    if (res.data && res.data.length > 0) {
-                        return res.data[0].data || {};
-                    }
-                } catch (e) {
-                    console.error('从云端获取参与者失败:', e);
-                }
-            }
             return getParticipantsFromLocal();
         }
-        
+
         function getParticipantsFromLocal() {
             const saved = localStorage.getItem(STORAGE_KEYS.PARTICIPANTS);
             return saved ? JSON.parse(saved) : {};
@@ -899,31 +937,7 @@
             if (!participants[weekKey].includes(phone)) {
                 participants[weekKey].push(phone);
             }
-            
-            // 保存到本地
             localStorage.setItem(STORAGE_KEYS.PARTICIPANTS, JSON.stringify(participants));
-            
-            // 保存到云端
-            if (isCloudReady) {
-                try {
-                    const res = await db.collection('participants').get();
-                    if (res.data && res.data.length > 0) {
-                        await db.collection('participants').doc(res.data[0]._id).update({
-                            data: participants,
-                            updateTime: new Date().toISOString()
-                        });
-                    } else {
-                        await db.collection('participants').add({
-                            data: participants,
-                            createTime: new Date().toISOString(),
-                            updateTime: new Date().toISOString()
-                        });
-                    }
-                    console.log('参与者记录已同步到云端');
-                } catch (e) {
-                    console.error('同步参与者到云端失败:', e);
-                }
-            }
         }
 
         async function hasParticipatedThisWeek(phone) {
@@ -955,7 +969,6 @@
             const centerY = canvas.height / 2;
             const radius = Math.min(centerX, centerY) - 10;
 
-            // 清空画布
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
             const availablePrizes = currentPrizes.filter(p => p.count > 0 || p.type === 'thanks');
@@ -966,41 +979,33 @@
                 const startAngle = index * anglePerSection - Math.PI / 2;
                 const endAngle = (index + 1) * anglePerSection - Math.PI / 2;
 
-                // 绘制扇形
                 ctx.beginPath();
                 ctx.moveTo(centerX, centerY);
                 ctx.arc(centerX, centerY, radius, startAngle, endAngle);
                 ctx.closePath();
 
-                // 设置颜色
                 if (prize.type === 'thanks') {
-                    // 谢谢参与使用交替的灰色
                     ctx.fillStyle = (index % 2 === 0) ? '#95a5a6' : '#7f8c8d';
                 } else {
                     ctx.fillStyle = prize.color || '#3498db';
                 }
                 ctx.fill();
 
-                // 绘制边框
                 ctx.strokeStyle = '#fff';
                 ctx.lineWidth = 2;
                 ctx.stroke();
 
-                // 绘制文字
                 ctx.save();
                 ctx.translate(centerX, centerY);
                 ctx.rotate(startAngle + anglePerSection / 2);
                 ctx.textAlign = 'right';
                 ctx.fillStyle = prize.name === '牛奶' ? '#333' : '#fff';
                 ctx.font = 'bold 13px Microsoft YaHei';
-                
-                // 文字位置调整
                 const textRadius = radius - 35;
                 ctx.fillText(prize.name, textRadius, 4);
                 ctx.restore();
             });
 
-            // 绘制中心圆
             ctx.beginPath();
             ctx.arc(centerX, centerY, 30, 0, 2 * Math.PI);
             ctx.fillStyle = '#ffd700';
@@ -1013,14 +1018,14 @@
         function renderPrizeList() {
             const list = document.getElementById('prizeList');
             list.innerHTML = '';
-            
+
             const realPrizes = currentPrizes.filter(p => p.type === 'real' && p.count > 0);
-            
+
             if (realPrizes.length === 0) {
                 list.innerHTML = '<p style="text-align: center; color: #999;">暂无奖品</p>';
                 return;
             }
-            
+
             realPrizes.forEach(prize => {
                 const item = document.createElement('div');
                 item.className = 'prize-item real';
@@ -1037,16 +1042,14 @@
             if (isSpinning) return;
 
             const phone = document.getElementById('phone').value.trim();
-            
-            // 验证手机号
+
             if (!/^1[3-9]\d{9}$/.test(phone)) {
                 showResult('❌', '手机号格式错误', '请输入正确的11位手机号');
                 return;
             }
 
             showLoading('检查参与记录...');
-            
-            // 检查本周是否已参与
+
             const hasParticipated = await hasParticipatedThisWeek(phone);
             if (hasParticipated) {
                 hideLoading();
@@ -1056,7 +1059,6 @@
 
             hideLoading();
 
-            // 检查是否有奖品
             const availableRealPrizes = currentPrizes.filter(p => p.type === 'real' && p.count > 0);
             if (availableRealPrizes.length === 0) {
                 showResult('😔', '奖品已抽完', '本期奖品已全部抽完，敬请期待下期活动！');
@@ -1066,17 +1068,13 @@
             isSpinning = true;
             document.getElementById('drawBtn').disabled = true;
 
-            // 执行抽奖
             const result = performDraw();
-            
-            // 旋转转盘
+
             spinWheel(result.index, async () => {
                 showLoading('保存记录...');
-                
-                // 保存参与记录
+
                 await saveParticipant(phone, getWeekKey());
-                
-                // 保存中奖记录
+
                 const record = {
                     id: Date.now(),
                     phone: phone,
@@ -1086,7 +1084,6 @@
                 };
                 await saveRecord(record);
 
-                // 如果是实物奖品，减少库存
                 if (result.prize.type === 'real') {
                     const prizeIndex = currentPrizes.findIndex(p => p.id === result.prize.id);
                     if (prizeIndex !== -1) {
@@ -1096,20 +1093,18 @@
                 }
 
                 hideLoading();
-                
-                // 显示结果
+
                 setTimeout(() => {
                     if (result.prize.type === 'thanks') {
                         showResult('😊', '谢谢参与', '很遗憾，这次没有中奖，下周再来试试吧！');
                     } else {
                         showResult('🎉', '恭喜你中奖了！', `你抽中了：${result.prize.name}<br>请凭手机号 ${phone} 领奖`);
                     }
-                    
-                    // 更新显示
+
                     renderPrizeList();
                     drawWheel();
                     updateStats();
-                    
+
                     isSpinning = false;
                     document.getElementById('drawBtn').disabled = false;
                 }, 500);
@@ -1118,8 +1113,7 @@
 
         function performDraw() {
             const availablePrizes = currentPrizes.filter(p => p.count > 0 || p.type === 'thanks');
-            
-            // 构建加权数组（谢谢参与占更大权重）
+
             let weightedPool = [];
             availablePrizes.forEach((prize, index) => {
                 const weight = prize.type === 'thanks' ? 3 : 1;
@@ -1128,7 +1122,6 @@
                 }
             });
 
-            // 随机选择
             const randomIndex = Math.floor(Math.random() * weightedPool.length);
             return weightedPool[randomIndex];
         }
@@ -1138,20 +1131,16 @@
             const availablePrizes = currentPrizes.filter(p => p.count > 0 || p.type === 'thanks');
             const sectionCount = availablePrizes.length;
             const anglePerSection = 360 / sectionCount;
-            
-            // 计算目标角度（让指针指向选中扇形的中间）
+
             const targetAngle = 360 - (targetIndex * anglePerSection + anglePerSection / 2);
-            
-            // 添加多圈旋转
             const spins = 5 + Math.floor(Math.random() * 3);
             const finalAngle = currentRotation + spins * 360 + (targetAngle - (currentRotation % 360));
-            
+
             currentRotation = finalAngle;
-            
-            // 使用CSS动画
+
             canvas.style.transition = 'transform 4s cubic-bezier(0.23, 1, 0.32, 1)';
             canvas.style.transform = `rotate(${finalAngle}deg)`;
-            
+
             setTimeout(callback, 4000);
         }
 
@@ -1169,7 +1158,6 @@
 
         // ==================== 标签切换 ====================
         async function switchTab(tabName) {
-            // 更新标签按钮状态
             document.querySelectorAll('.nav-tab').forEach(tab => {
                 tab.classList.remove('active');
                 if (tab.dataset.tab === tabName) {
@@ -1177,25 +1165,22 @@
                 }
             });
 
-            // 更新内容显示
             document.querySelectorAll('.tab-content').forEach(content => {
                 content.classList.remove('active');
             });
             document.getElementById(tabName).classList.add('active');
 
             if (tabName === 'records') {
-                // 重新加载最新数据
                 await loadPrizes();
                 renderRecords();
                 updateStats();
             } else if (tabName === 'admin') {
-                // 重新加载最新数据
                 await loadPrizes();
                 if (isAdminLoggedIn) {
                     renderAdminPrizeList();
+                    generateFixedQRCode();
                 }
             } else if (tabName === 'lottery') {
-                // 抽奖页面也刷新数据
                 await loadPrizes();
                 renderPrizeList();
                 drawWheel();
@@ -1207,9 +1192,9 @@
             showLoading('加载记录...');
             const records = await getRecords();
             hideLoading();
-            
+
             const list = document.getElementById('recordsList');
-            
+
             if (records.length === 0) {
                 list.innerHTML = `
                     <div class="empty-state">
@@ -1220,7 +1205,6 @@
                 return;
             }
 
-            // 更新筛选器选项
             const filterSelect = document.getElementById('filterPrize');
             const uniquePrizes = [...new Set(records.map(r => r.prize.name))];
             filterSelect.innerHTML = '<option value="">全部奖品</option>' + 
@@ -1244,19 +1228,19 @@
         async function filterRecords() {
             const phoneFilter = document.getElementById('searchPhone').value.trim();
             const prizeFilter = document.getElementById('filterPrize').value;
-            
+
             showLoading('筛选中...');
             let records = await getRecords();
             hideLoading();
-            
+
             if (phoneFilter) {
                 records = records.filter(r => r.phone.includes(phoneFilter));
             }
-            
+
             if (prizeFilter) {
                 records = records.filter(r => r.prize.name === prizeFilter);
             }
-            
+
             const list = document.getElementById('recordsList');
             if (records.length === 0) {
                 list.innerHTML = `
@@ -1267,7 +1251,7 @@
                 `;
                 return;
             }
-            
+
             list.innerHTML = records.map(record => `
                 <div class="record-item ${record.prize.type === 'real' ? 'winner' : 'thanks-record'}">
                     <div class="record-info">
@@ -1290,7 +1274,7 @@
             const realPrizes = currentPrizes.filter(p => p.type === 'real');
             const remainingPrizes = realPrizes.reduce((sum, p) => sum + p.count, 0);
             const winners = records.filter(r => r.prize.type === 'real').length;
-            
+
             document.getElementById('totalDraws').textContent = records.length;
             document.getElementById('totalWinners').textContent = winners;
             document.getElementById('remainingPrizes').textContent = remainingPrizes;
@@ -1308,48 +1292,42 @@
                 panel.style.display = 'block';
                 panel.classList.add('active');
                 renderAdminPrizeList();
-                
-                // 绑定危险操作按钮事件
+                generateFixedQRCode();
+
                 const clearBtn = document.getElementById('clearRecordsBtn');
                 const resetBtn = document.getElementById('resetDataBtn');
-                
+
                 if (clearBtn) {
                     clearBtn.onclick = function() {
-                        console.log('Clear records button clicked');
                         clearAllRecords();
                     };
                 }
                 if (resetBtn) {
                     resetBtn.onclick = function() {
-                        console.log('Reset data button clicked');
                         resetAllData();
                     };
                 }
-                
-                // 绑定数据导出按钮事件
+
                 const exportRecordsBtn = document.getElementById('exportRecordsBtn');
                 const exportPrizesBtn = document.getElementById('exportPrizesBtn');
                 const exportAllBtn = document.getElementById('exportAllBtn');
-                
+
                 if (exportRecordsBtn) {
                     exportRecordsBtn.onclick = function() {
-                        console.log('Export records button clicked');
                         exportRecords();
                     };
                 }
                 if (exportPrizesBtn) {
                     exportPrizesBtn.onclick = function() {
-                        console.log('Export prizes button clicked');
                         exportPrizes();
                     };
                 }
                 if (exportAllBtn) {
                     exportAllBtn.onclick = function() {
-                        console.log('Export all button clicked');
                         exportAllData();
                     };
                 }
-                
+
                 alert('登录成功！');
             } else {
                 alert('密码错误！');
@@ -1367,18 +1345,13 @@
 
         function renderAdminPrizeList() {
             const tbody = document.getElementById('adminPrizeList');
-            if (!tbody) {
-                console.error('adminPrizeList element not found');
-                return;
-            }
-            
-            console.log('Rendering admin prize list, count:', currentPrizes.length);
-            
+            if (!tbody) return;
+
             if (currentPrizes.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #999;">暂无奖品</td></tr>';
                 return;
             }
-            
+
             tbody.innerHTML = currentPrizes.map(prize => {
                 const typeLabel = prize.type === 'real' ? '🎁 实物' : '😊 谢谢参与';
                 const countLabel = prize.type === 'thanks' ? '∞' : prize.count;
@@ -1393,21 +1366,39 @@
                     </td>
                 </tr>
             `}).join('');
-            
-            // 使用事件委托绑定按钮点击事件
+
             tbody.querySelectorAll('button[data-action="edit"]').forEach(btn => {
                 btn.onclick = function() {
                     const id = parseInt(this.getAttribute('data-id'));
                     editPrize(id);
                 };
             });
-            
+
             tbody.querySelectorAll('button[data-action="delete"]').forEach(btn => {
                 btn.onclick = function() {
                     const id = parseInt(this.getAttribute('data-id'));
                     deletePrize(id);
                 };
             });
+        }
+
+        // 生成固定二维码
+        function generateFixedQRCode() {
+            const container = document.getElementById('fixedQRCode');
+            container.innerHTML = '';
+
+            try {
+                new QRCode(container, {
+                    text: GITHUB_PAGES_URL,
+                    width: 200,
+                    height: 200,
+                    colorDark: '#000000',
+                    colorLight: '#ffffff',
+                    correctLevel: QRCode.CorrectLevel.M
+                });
+            } catch (e) {
+                container.innerHTML = '<p style="color: #999;">二维码生成失败，请使用固定链接</p>';
+            }
         }
 
         async function savePrize() {
@@ -1421,7 +1412,6 @@
             }
 
             if (editingPrizeId) {
-                // 编辑模式
                 const index = currentPrizes.findIndex(p => p.id === editingPrizeId);
                 if (index !== -1) {
                     currentPrizes[index] = {
@@ -1433,7 +1423,6 @@
                     };
                 }
             } else {
-                // 添加新模式
                 const newId = Math.max(...currentPrizes.map(p => p.id), 0) + 1;
                 currentPrizes.push({
                     id: newId,
@@ -1447,12 +1436,12 @@
             showLoading('保存中...');
             await savePrizesToStorage();
             hideLoading();
-            
+
             renderAdminPrizeList();
             renderPrizeList();
             drawWheel();
             resetPrizeForm();
-            alert('保存成功！');
+            alert('保存成功！\n\n记得点击"保存到 GitHub"按钮，手机端才能同步最新数据。');
         }
 
         function editPrize(id) {
@@ -1465,30 +1454,21 @@
             editingPrizeId = id;
         }
 
-        // 删除奖品
         async function deletePrize(id) {
-            console.log('deletePrize called with id:', id);
-            if (!confirm('确定要删除这个奖品吗？')) {
-                console.log('Delete cancelled by user');
-                return;
-            }
-            
+            if (!confirm('确定要删除这个奖品吗？')) return;
+
             const originalLength = currentPrizes.length;
             currentPrizes = currentPrizes.filter(p => p.id !== id);
-            
-            console.log('Before:', originalLength, 'After:', currentPrizes.length);
-            
+
             if (currentPrizes.length < originalLength) {
                 showLoading('删除中...');
                 await savePrizesToStorage();
                 hideLoading();
-                
+
                 renderAdminPrizeList();
                 renderPrizeList();
                 drawWheel();
                 alert('删除成功！');
-            } else {
-                alert('删除失败：未找到该奖品');
             }
         }
 
@@ -1499,74 +1479,39 @@
             editingPrizeId = null;
         }
 
-        // 清空所有记录
         async function clearAllRecords() {
-            console.log('clearAllRecords called');
-            if (!confirm('⚠️ 确定要清空所有抽奖记录吗？此操作不可恢复！')) {
-                console.log('Clear records cancelled by user');
-                return;
-            }
-            
+            if (!confirm('⚠️ 确定要清空所有抽奖记录吗？此操作不可恢复！')) return;
+
             showLoading('清空中...');
-            
+
             try {
                 localStorage.removeItem(STORAGE_KEYS.RECORDS);
                 localStorage.removeItem(STORAGE_KEYS.PARTICIPANTS);
-                
-                // 清空云端记录
-                if (isCloudReady) {
-                    const res = await db.collection('draw_records').get();
-                    for (const doc of res.data || []) {
-                        await db.collection('draw_records').doc(doc._id).remove();
-                    }
-                    await db.collection('participants').remove();
-                }
-                
-                console.log('Records cleared');
+
                 hideLoading();
                 alert('记录已清空！');
                 updateStats();
             } catch (e) {
                 hideLoading();
-                console.error('Error clearing records:', e);
                 alert('清空失败：' + e.message);
             }
         }
 
-        // 重置所有数据
         async function resetAllData() {
-            console.log('resetAllData called');
-            if (!confirm('⚠️ 确定要重置所有数据吗？这将恢复默认奖品配置并清空所有记录！')) {
-                console.log('Reset all data cancelled by user');
-                return;
-            }
-            
+            if (!confirm('⚠️ 确定要重置所有数据吗？这将恢复默认奖品配置并清空所有记录！')) return;
+
             showLoading('重置中...');
-            
+
             try {
                 localStorage.removeItem(STORAGE_KEYS.PRIZES);
                 localStorage.removeItem(STORAGE_KEYS.RECORDS);
                 localStorage.removeItem(STORAGE_KEYS.PARTICIPANTS);
-                
-                // 重置云端数据
-                if (isCloudReady) {
-                    // 清空记录
-                    const recordsRes = await db.collection('draw_records').get();
-                    for (const doc of recordsRes.data || []) {
-                        await db.collection('draw_records').doc(doc._id).remove();
-                    }
-                    // 清空参与者
-                    await db.collection('participants').remove();
-                }
-                
-                console.log('All data cleared');
-                
+
                 currentPrizes = JSON.parse(JSON.stringify(DEFAULT_PRIZES));
                 await savePrizesToStorage();
-                console.log('Default prizes restored');
-                
+
                 hideLoading();
-                
+
                 renderAdminPrizeList();
                 renderPrizeList();
                 drawWheel();
@@ -1574,14 +1519,11 @@
                 alert('数据已重置！');
             } catch (e) {
                 hideLoading();
-                console.error('Error resetting data:', e);
                 alert('重置失败：' + e.message);
             }
         }
 
         // ==================== 数据导出功能 ====================
-        
-        // 导出抽奖记录为CSV
         async function exportRecords() {
             showLoading('加载记录...');
             const records = await getRecords();
@@ -1590,11 +1532,8 @@
                 alert('暂无抽奖记录可导出！');
                 return;
             }
-            
-            // CSV 表头
+
             const headers = ['序号', '手机号', '奖品名称', '奖品类型', '抽奖时间', '周次'];
-            
-            // CSV 数据行
             const rows = records.map((record, index) => [
                 index + 1,
                 record.phone,
@@ -1603,34 +1542,27 @@
                 record.time,
                 record.weekKey
             ]);
-            
-            // 生成CSV内容
+
             const csvContent = [headers, ...rows]
                 .map(row => row.map(cell => `"${cell}"`).join(','))
                 .join('\n');
-            
-            // 添加BOM以支持中文
+
             const BOM = '\uFEFF';
             const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
-            
-            // 下载文件
+
             const timestamp = new Date().toLocaleString('zh-CN').replace(/[/:]/g, '-');
             downloadFile(blob, `抽奖记录_${timestamp}.csv`);
-            
+
             alert(`成功导出 ${records.length} 条抽奖记录！`);
         }
-        
-        // 导出奖品配置为CSV（Excel格式）
+
         function exportPrizes() {
             if (currentPrizes.length === 0) {
                 alert('暂无奖品配置可导出！');
                 return;
             }
-            
-            // CSV 表头
+
             const headers = ['序号', '奖品ID', '奖品名称', '奖品类型', '数量', '颜色'];
-            
-            // CSV 数据行
             const rows = currentPrizes.map((prize, index) => [
                 index + 1,
                 prize.id,
@@ -1639,65 +1571,54 @@
                 prize.type === 'thanks' ? '∞' : prize.count,
                 prize.color
             ]);
-            
-            // 生成CSV内容
+
             const csvContent = [headers, ...rows]
                 .map(row => row.map(cell => `"${cell}"`).join(','))
                 .join('\n');
-            
-            // 添加BOM以支持中文
+
             const BOM = '\uFEFF';
             const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
-            
-            // 下载文件
+
             const timestamp = new Date().toLocaleString('zh-CN').replace(/[/:]/g, '-');
             downloadFile(blob, `奖品配置_${timestamp}.csv`);
-            
+
             alert(`成功导出 ${currentPrizes.length} 个奖品配置！`);
         }
-        
-        // 导出全部数据为CSV（包含多个工作表信息）
+
         async function exportAllData() {
             showLoading('加载数据...');
             const records = await getRecords();
             hideLoading();
             const timestamp = new Date().toLocaleString('zh-CN').replace(/[/:]/g, '-');
-            
-            // 构建完整的CSV内容，包含多个部分
+
             let csvContent = '';
-            
-            // 第一部分：概览信息
             csvContent += '抽奖数据导出概览\n';
             csvContent += `导出时间,${new Date().toLocaleString('zh-CN')}\n`;
             csvContent += `奖品数量,${currentPrizes.length}\n`;
             csvContent += `抽奖记录数,${records.length}\n`;
             csvContent += '\n\n';
-            
-            // 第二部分：奖品配置
+
             csvContent += '奖品配置\n';
             csvContent += '序号,奖品ID,奖品名称,奖品类型,数量,颜色\n';
             currentPrizes.forEach((prize, index) => {
                 csvContent += `${index + 1},${prize.id},"${prize.name}",${prize.type === 'real' ? '实物奖品' : '谢谢参与'},${prize.type === 'thanks' ? '∞' : prize.count},${prize.color}\n`;
             });
             csvContent += '\n\n';
-            
-            // 第三部分：抽奖记录
+
             csvContent += '抽奖记录\n';
             csvContent += '序号,手机号,奖品名称,奖品类型,抽奖时间,周次\n';
             records.forEach((record, index) => {
                 csvContent += `${index + 1},${record.phone},"${record.prize.name}",${record.prize.type === 'real' ? '实物奖品' : '谢谢参与'},${record.time},${record.weekKey}\n`;
             });
-            
-            // 添加BOM以支持中文
+
             const BOM = '\uFEFF';
             const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
-            
+
             downloadFile(blob, `抽奖工具完整数据_${timestamp}.csv`);
-            
+
             alert(`成功导出完整数据！\n奖品数量：${currentPrizes.length}\n抽奖记录：${records.length} 条`);
         }
-        
-        // 通用下载文件函数
+
         function downloadFile(blob, filename) {
             const link = document.createElement('a');
             const url = URL.createObjectURL(blob);
