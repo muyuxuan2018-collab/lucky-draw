@@ -693,13 +693,18 @@
         // ==================== 云开发初始化 ====================
         async function initCloud() {
             try {
+                // 使用匿名登录方式
                 cloudApp = new cloud.Cloud({
-                    identityless: true,
                     resourceAppid: CLOUD_CONFIG.resourceAppid,
                     resourceEnv: CLOUD_CONFIG.resourceEnv
                 });
                 
                 await cloudApp.init();
+                
+                // 匿名登录
+                await cloudApp.auth().anonymousAuthProvider().signIn();
+                console.log('匿名登录成功');
+                
                 db = cloudApp.database();
                 isCloudReady = true;
                 console.log('云开发初始化成功');
